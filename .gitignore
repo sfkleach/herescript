@@ -1,6 +1,4 @@
-_build/l
-
 *.o
 *.out
-/_build/test-runscript
+/_build/
 /.jj/
