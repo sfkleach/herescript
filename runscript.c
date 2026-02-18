@@ -228,6 +228,7 @@ static char *process_substitution(const char *input) {
             const char *value;
             if (name_len == 0) {
                 // ${} expands to script filename.
+                // printf("Debug: Substituting ${} with script path: %s\n", script_path);
                 value = script_path;
                 script_name_used = true;
             } else {
@@ -449,6 +450,12 @@ static void process_header_line(const char *line) {
 // ============================================================================
 
 int main(int argc, char **argv) {
+
+    // for (int i = 0; i < argc; i++) {
+    //     printf("Debug: Initial argv[%d]: %s\n", i, argv[i]);
+    // }
+
+
     if (argc < 2) {
         fprintf(stderr, "runscript: no script specified\n");
         fprintf(stderr, "  Hint: This program is meant to be used as a shebang interpreter.\n");
@@ -458,9 +465,12 @@ int main(int argc, char **argv) {
     // Initialize arrays.
     init_string_array(&arguments, 16);
     init_binding_array(&bindings, 64);
+
+    // The first argument is the path to the executable to be launched (from the shebang).
+    const char *exec_part = argv[1];
     
     // Get script path and resolve to canonical path.
-    const char *script_arg = argv[1];
+    const char *script_arg = argv[2];
     char resolved_path[PATH_MAX];
     if (!realpath(script_arg, resolved_path)) {
         perror("runscript: realpath");
@@ -495,22 +505,26 @@ int main(int argc, char **argv) {
         line_len--;
     }
     
-    // Check shebang format: #!/usr/bin/runscript <executable>
-    const char *prefix = "#!/usr/bin/runscript ";
-    size_t prefix_len = strlen(prefix);
-    
-    if (strncmp(line, prefix, prefix_len) != 0) {
+    // Check shebang format: #!<runscript-path> <executable>
+    // We don't check the runscript path (since it's ourself), just check the prefix.
+    if (line_len < 2 || line[0] != '#' || line[1] != '!') {
         fprintf(stderr, "runscript: malformed shebang line\n");
-        fprintf(stderr, "  Expected: #!/usr/bin/runscript <executable>\n");
+        fprintf(stderr, "  Expected: a line starting with #!\n");
         fprintf(stderr, "  Got: %s\n", line);
-        fprintf(stderr, "  Hint: The shebang must specify an executable.\n");
         fclose(fp);
         free(line);
         return EXIT_MALFORMED_SHEBANG;
     }
     
-    char *exec_part = line + prefix_len;
-    strip_whitespace(exec_part);
+    // Find the first space character after #!
+    char *space = strchr(line + 2, ' ');
+    if (!space) {
+        fprintf(stderr, "runscript: no executable specified in shebang\n");
+        fprintf(stderr, "  Hint: The shebang must specify an executable after the runscript path.\n");
+        fclose(fp);
+        free(line);
+        return EXIT_MALFORMED_SHEBANG;
+    }
     
     if (strlen(exec_part) == 0) {
         fprintf(stderr, "runscript: no executable specified in shebang\n");
@@ -556,12 +570,13 @@ int main(int argc, char **argv) {
     fclose(fp);
     
     // Add any command-line arguments passed to runscript (after the script name).
-    for (int i = 2; i < argc; i++) {
+    for (int i = 3; i < argc; i++) {
         append_string_array(&arguments, strdup_safe(argv[i]));
     }
     
     // Append script filename if ${} was not used.
     if (!script_name_used) {
+        // printf("Debug: Appending script path to arguments since ${} was not used.\n");
         append_string_array(&arguments, strdup_safe(script_path));
     }
     
@@ -581,6 +596,10 @@ int main(int argc, char **argv) {
     
     // Bindings have already been applied to the environment during parsing.
     // The environment is now ready for execution.
+
+    // for (size_t i = 0; i < new_argc; i++) {
+    //     printf("Debug: argv[%zu]: %s\n", i, new_argv[i]);
+    // }
     
     // Execute.
     // If executable contains '/', use it as a path; otherwise search PATH.

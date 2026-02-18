@@ -21,4 +21,4 @@ clean:
 	rm -f $(TARGET) $(TEST_TARGET)
 
 install: $(TARGET)
-	install -m 755 $(TARGET) /usr/local/bin/$(TARGET)
+	install -m 755 $(TARGET) /usr/local/bin/runscript
