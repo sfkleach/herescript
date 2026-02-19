@@ -4,6 +4,13 @@ build_dir: "${BUILD_DIR}"
 
 # This file contains a variety of test cases for runscript, covering different features and edge cases.
 tests:
+  - name: run-echo
+    script: |
+      #!${BUILD_DIR}/runscript echo
+      #! Hello, World!
+    output: |
+      Hello, World! ${BUILD_DIR}/run-echo.sh
+
   - name: comprehensive-test
     script: |
       #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript

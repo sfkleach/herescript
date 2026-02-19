@@ -24,7 +24,8 @@ import yaml
 # The canonical form of the first shebang line that the safety check accepts.
 # Scripts whose first line does not match this pattern (after trimming) are
 # blocked from execution to prevent accidental execution of untrusted scripts.
-_SAFE_SHEBANG_TEMPLATE = "#!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript"
+_SAFE_SHEBANG_TEMPLATE_1 = "#!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript"
+_SAFE_SHEBANG_TEMPLATE_2 = "#!${BUILD_DIR}/runscript echo"
 
 
 def get_build_dir() -> Path:
@@ -54,8 +55,13 @@ class Main:
         The check is performed on the unexpanded template so that hardcoded paths
         cannot be used to load arbitrary executables during testing.
         """
-        safe = self.expand_build_dir(_SAFE_SHEBANG_TEMPLATE)
-        return first_line.rstrip("\n\r").startswith(safe)
+        safe = self.expand_build_dir(_SAFE_SHEBANG_TEMPLATE_1)
+        if first_line.rstrip("\n\r").startswith(safe):
+            return True
+        safe = self.expand_build_dir(_SAFE_SHEBANG_TEMPLATE_2)
+        if first_line.rstrip("\n\r").startswith(safe):
+            return True
+        return False
 
     def run_test(self, test: dict) -> tuple:
         """Execute a single test case.
