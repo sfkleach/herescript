@@ -461,7 +461,26 @@ int main(int argc, char **argv) {
         fprintf(stderr, "  Hint: This program is meant to be used as a shebang interpreter.\n");
         return EXIT_GENERAL_ERROR;
     }
-    
+
+    // Handle --help as the sole argument.
+    if (argc == 2 && strcmp(argv[1], "--help") == 0) {
+        printf(
+            "Runscript is a modern, structured interpreter launcher designed to extend\n"
+            "the idiom of starting shebang scripts with #!/usr/bin/env. Instead scripts begin\n"
+            "with:\n"
+            "\n"
+            "    #!/usr/bin/runscript <executable>\n"
+            "\n"
+            "This is followed by a header block of lines each of which start with `#!`. To\n"
+            "learn more about the exact syntax go to https://github.com/sfkleach/runscript.\n"
+            "It supports:\n"
+            "  - locally defining environment variables,\n"
+            "  - controlling the order of options and arguments,\n"
+            "  - and choosing where to insert the script file-name itself.\n"
+        );
+        return 0;
+    }
+
     // Initialize arrays.
     init_string_array(&arguments, 16);
     init_binding_array(&bindings, 64);
