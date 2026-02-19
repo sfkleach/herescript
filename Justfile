@@ -4,8 +4,13 @@ default:
 build:
     make _build/runscript _build/test-runscript
 
+functest: build
+    just -f functests/Justfile functest
+
 clean:
     make clean
+    rm -f _build/*.sh
+    just -f functests/Justfile clean
 
 install:
     make install
