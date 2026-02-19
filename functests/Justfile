@@ -1,0 +1,13 @@
+[private]
+@default:
+    just --list
+
+check:
+    uv run pyright functest.py
+
+functest: check
+    uv run python3 functest.py
+
+clean:
+    rm -rf .venv
+    rm -rf __pycache__

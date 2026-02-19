@@ -1,0 +1,219 @@
+# Any occurences of the build-directory _build in the output are replaced with 
+# ${BUILD_DIR} to allow for testing without hardcoding the build path.
+build_dir: "${BUILD_DIR}"
+
+# This file contains a variety of test cases for runscript, covering different features and edge cases.
+tests:
+  - name: comprehensive-test
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #! First normal arg
+      #!# This comment should be ignored
+      #! MYVAR=hello
+      #! Second arg with ${MYVAR}
+      #! \n\t\sescapes work
+      #!= --option=value
+      #!! This is literal: ${MYVAR}
+      #!$ This has literal dollar: ${MYVAR}
+      #!\ No escape: \n stays as backslash-n
+      #! Script name is: ${}
+    output: |
+      {
+          "env": [
+              "MYVAR=hello"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-runscript",
+              "First normal arg",
+              "Second arg with hello",
+              "\n\t escapes work",
+              "--option=value",
+              "This is literal: ${MYVAR}",
+              "This has literal dollar: ${MYVAR}",
+              "No escape: \\n stays as backslash-n",
+              "Script name is: ${BUILD_DIR}/comprehensive-test.sh"
+          ]
+      }
+
+  - name: final-demo
+    env:
+      BASE_URL: https://zark.com
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!# This is a comment - it will be ignored
+      #!#
+      #! BASE_URL:=https://example.com
+      #! PORT:=8080
+      #! --base-url=${BASE_URL}
+      #! --port=${PORT}
+      #!= --config=production.conf
+      #!! --literal-arg=${BASE_URL}
+      #!$ --dollar-literal=${NOT_EXPANDED}
+      #!\ No\nescape\there
+      #! Escaped:\n\t\shere
+      #! Empty arg follows:
+      #!
+      #! Script path is: ${}
+    output: |
+      {
+          "env": [
+              "BASE_URL=https://zark.com",
+              "PORT=8080"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-runscript",
+              "--base-url=https://zark.com",
+              "--port=8080",
+              "--config=production.conf",
+              "--literal-arg=${BASE_URL}",
+              "--dollar-literal=${NOT_EXPANDED}",
+              "No\\nescape\\there",
+              "Escaped:\n\t here",
+              "Empty arg follows:",
+              "",
+              "Script path is: ${BUILD_DIR}/final-demo.sh"
+          ]
+      }
+
+  - name: simple-test
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #! --option1
+      #! TEST_VAR=test_value
+    output: |
+      {
+          "env": [
+              "TEST_VAR=test_value"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-runscript",
+              "--option1",
+              "${BUILD_DIR}/simple-test.sh"
+          ]
+      }
+
+  - name: test2
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #! --option1
+      #! TEST_VAR=test_value
+      #! ANOTHER_VAR:=default
+      #! --arg=${TEST_VAR}
+    output: |
+      {
+          "env": [
+              "TEST_VAR=test_value",
+              "ANOTHER_VAR=default"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-runscript",
+              "--option1",
+              "--arg=test_value",
+              "${BUILD_DIR}/test2.sh"
+          ]
+      }
+  - name: test-conditional
+    env:
+      TEST_PRE: this_should_not_be_overridden
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #! TEST_PRE:=should_not_be_set
+      #! TEST_NEW:=should_be_set
+    output: |
+      {
+          "env": [
+              "TEST_PRE=this_should_not_be_overridden",
+              "TEST_NEW=should_be_set"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-runscript",
+              "${BUILD_DIR}/test-conditional.sh"
+          ]
+      }
+
+  - name: test-echo
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #! Hello from runscript!
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-runscript",
+              "Hello from runscript!",
+              "${BUILD_DIR}/test-echo.sh"
+          ]
+      }
+  - name: test-empty
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!# The next argument is an empty argument:
+      #!
+      #!# But this is not.
+      #! argument2
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-runscript",
+              "",
+              "argument2",
+              "${BUILD_DIR}/test-empty.sh"
+          ]
+      }
+  - name: test-error-shebang-option
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript --option
+      #! This should fail
+    exit_code: 3
+  - name: test-error-undefined-variable
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #! UNDEFINED_VAR=${DOES_NOT_EXIST}
+    exit_code: 2
+  - name: test-ignored-lines
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!# First arg
+      #!# Second arg
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-runscript",
+              "${BUILD_DIR}/test-ignored-lines.sh"
+          ]
+      }
+
+  - name: test-script
+    script: |
+      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #! --option1
+      #! ARG_VAR=arg_value
+      #! TEST_VAR:=default_value
+      #! --flag=value
+      #!= --flag2=value2
+      #! This should be an argument
+      #!# This is a comment and should be ignored
+      #! \n\t\s
+      #!
+    output: |
+      {
+          "env": [
+              "ARG_VAR=arg_value",
+              "TEST_VAR=default_value"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-runscript",
+              "--option1",
+              "--flag=value",
+              "--flag2=value2",
+              "This should be an argument",
+              "\n\t ",
+              "",
+              "${BUILD_DIR}/test-script.sh"
+          ]
+      }
