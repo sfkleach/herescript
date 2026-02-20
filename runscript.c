@@ -462,21 +462,30 @@ int main(int argc, char **argv) {
         return EXIT_GENERAL_ERROR;
     }
 
-    // Handle --help as the sole argument.
+    // Handle --help as the sole argument. Special case that does not overlap
+    // with normal usage since there are always at least three arguments in 
+    // normal usage (runscript, executable and script-path).
     if (argc == 2 && strcmp(argv[1], "--help") == 0) {
         printf(
+            "Usage: runscript <executable> <script> [args...]\n"
+            "\n"
             "Runscript is a modern, structured interpreter launcher designed to extend\n"
-            "the idiom of starting shebang scripts with #!/usr/bin/env. Instead scripts begin\n"
-            "with:\n"
+            "the idiom of starting shebang scripts with #!/usr/bin/env. Instead, scripts begin\n"
+            "with '#!/usr/bin/runscript EXECUTABLE' and arguments are specified using\n"
+            "continuation lines that each begin with '#!'. For example:\n"
             "\n"
-            "    #!/usr/bin/runscript <executable>\n"
+            "    #!/usr/bin/runscript python3\n"
+            "    #! --verbose\n"
+            "    #! ${}\n"
             "\n"
-            "This is followed by a header block of lines each of which start with `#!`. To\n"
-            "learn more about the exact syntax go to https://github.com/sfkleach/runscript.\n"
+            "Here '#! --verbose' adds --verbose as an argument, and '#! ${}' controls\n"
+            "exactly where the script filename appears in the argument list.\n"
+            "\n"
+            "To learn more about the exact syntax go to https://github.com/sfkleach/runscript.\n"
             "It supports:\n"
-            "  - locally defining environment variables,\n"
-            "  - controlling the order of options and arguments,\n"
-            "  - and choosing where to insert the script file-name itself.\n"
+            "  - Setting environment variables scoped to the script invocation.\n"
+            "  - Placing options before, after, or interleaved with the script arguments.\n"
+            "  - Controlling exactly where the script filename appears in the argument list.\n"
         );
         return 0;
     }
