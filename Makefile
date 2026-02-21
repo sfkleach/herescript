@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -O2 -D_POSIX_C_SOURCE=200809L -Werror
+CFLAGS = -Wall -Wextra -std=c11 -O2 -Werror
 TARGET = _build/herescript
 TEST_TARGET = _build/test-herescript
 SRC = herescript.c

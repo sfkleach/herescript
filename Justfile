@@ -6,6 +6,8 @@ test: functest lint
 lint:
     cppcheck --library=posix --suppress=missingIncludeSystem --enable=all --error-exitcode=1 herescript.c test-herescript.c
 
+rebuild: clean build
+
 build:
     make _build/herescript _build/test-herescript
 
