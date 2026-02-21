@@ -1,6 +1,11 @@
 default:
     @just --list
 
+test: functest lint
+
+lint:
+    cppcheck --library=posix --suppress=missingIncludeSystem --enable=all --error-exitcode=1 herescript.c test-herescript.c
+
 build:
     make _build/herescript _build/test-herescript
 
@@ -22,3 +27,11 @@ init-decisions:
 # Add a new decision record
 add-decision TOPIC:
     python3 scripts/decisions.py --add "{{TOPIC}}"
+
+# Quick start for Ubuntu based systems
+quick-start-ubuntu:
+    sudo apt update
+    command -v python3 || sudo apt install -y python3
+    command -v cppcheck || sudo apt install -y cppcheck
+    command -v make || sudo apt install -y make
+    command -v gcc || sudo apt install -y gcc
