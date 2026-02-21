@@ -1,8 +1,8 @@
-# runscript Execution Specification
+# herescript Execution Specification
 
 ## 1. Overview
 
-`runscript` executes a script according to metadata encoded in a header block
+`herescript` executes a script according to metadata encoded in a header block
 immediately following the shebang. It constructs:
 
 - argv[] — argument vector
@@ -20,18 +20,18 @@ Evaluation is deterministic, single‑pass, and non‑recursive.
 
 The first line must be:
 
-    #!/usr/bin/runscript <executable>
+    #!/usr/bin/herescript <executable>
 
 `<executable>` becomes argv[0]. 
 
 NOTE: No option should be passed. If the first line has the form:
 
 ```
-#!/usr/bin/runscript <executable> <option>
+#!/usr/bin/herescript <executable> <option>
 ```
 
-then runscript exits with non-zero status code. This is a deliberate decision to
-create room for passing options to runscript rather than the executable in the
+then herescript exits with non-zero status code. This is a deliberate decision to
+create room for passing options to herescript rather than the executable in the
 future.
 
 
@@ -95,7 +95,7 @@ There is an exception when the special interpretation of `=` is in force:
 - **IF** the body contains an `=` character
 - And the special interpretation is in force
 - And the first character of the body is not a `-` (i.e. matches `[^-]`)
-- **THEN** the header line is in error and runscript should exit with a non-zero status code.
+- **THEN** the header line is in error and herescript should exit with a non-zero status code.
 
 
 ### 3.3 Short header lines
@@ -261,7 +261,7 @@ constructed argument vector and environment.
 
 ## 10. Error Conditions
 
-runscript must fail if:
+herescript must fail if:
 
 - `${NAME}` references an undefined variable
 - the shebang is malformed

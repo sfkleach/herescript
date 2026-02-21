@@ -1,6 +1,6 @@
-# Initial development of runscript
+# Initial development of herescript
 
-`runscript` is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism. It provides:
+`herescript` is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism. It provides:
 
 - multi‑line argument declarations
 - environment bindings
@@ -32,7 +32,7 @@ int main(int argc, char **argv) {
     // 6. Build envp[]
     // 7. execve()
 
-    fprintf(stderr, "runscript: implementation pending\n");
+    fprintf(stderr, "herescript: implementation pending\n");
     return 1;
 }
 ```

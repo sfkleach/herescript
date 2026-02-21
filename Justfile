@@ -2,7 +2,7 @@ default:
     @just --list
 
 build:
-    make _build/runscript _build/test-runscript
+    make _build/herescript _build/test-herescript
 
 functest: build
     just -f functests/Justfile functest

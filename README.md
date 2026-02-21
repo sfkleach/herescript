@@ -1,6 +1,6 @@
-# runscript
+# herescript
 
-`runscript` is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism. It provides:
+`herescript` is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism. It provides:
 
 - multi‑line argument declarations
 - environment bindings
@@ -11,7 +11,7 @@
 
 Scripts begin with:
 
-    #!/usr/bin/runscript <executable>
+    #!/usr/bin/herescript <executable>
 
 Followed by a header block of lines beginning with `#!`.
 

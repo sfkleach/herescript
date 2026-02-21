@@ -1,6 +1,6 @@
-# Runscript coding guidelines
+# Herescript coding guidelines
 
-Runscript is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism.
+Herescript is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism.
 
 ## Collaboration Guidelines
 

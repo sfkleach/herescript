@@ -143,7 +143,7 @@ static void strip_whitespace(char *str) {
 static const char *getenv_or_fail(const char *name) {
     const char *value = getenv(name);
     if (!value) {
-        fprintf(stderr, "runscript: undefined environment variable: ${%s}\n", name);
+        fprintf(stderr, "herescript: undefined environment variable: ${%s}\n", name);
         fprintf(stderr, "  Hint: Ensure the variable is set before running this script.\n");
         exit(EXIT_UNDEFINED_VAR);
     }
@@ -289,7 +289,7 @@ static void parse_metachars(const char *line, Metachars *meta, size_t *body_star
             case '=': meta->no_binding = true; break;
             case '#': meta->comment = true; break;
             default:
-                fprintf(stderr, "runscript: invalid metacharacter '%c' in header line\n", line[i]);
+                fprintf(stderr, "herescript: invalid metacharacter '%c' in header line\n", line[i]);
                 fprintf(stderr, "  Hint: Valid metacharacters are: ! \\ $ = #\n");
                 exit(EXIT_INVALID_HEADER);
         }
@@ -429,7 +429,7 @@ static void process_header_line(const char *line) {
             } else {
                 free(name);
                 // Invalid binding becomes an error when = interpretation is enabled.
-                fprintf(stderr, "runscript: invalid variable name in binding: %s\n", body);
+                fprintf(stderr, "herescript: invalid variable name in binding: %s\n", body);
                 fprintf(stderr, "  Hint: Variable names must start with a letter or underscore,\n");
                 fprintf(stderr, "        followed by letters, digits, or underscores.\n");
                 exit(EXIT_INVALID_HEADER);
@@ -457,31 +457,31 @@ int main(int argc, char **argv) {
 
 
     if (argc < 2) {
-        fprintf(stderr, "runscript: no script specified\n");
+        fprintf(stderr, "herescript: no script specified\n");
         fprintf(stderr, "  Hint: This program is meant to be used as a shebang interpreter.\n");
         return EXIT_GENERAL_ERROR;
     }
 
     // Handle --help as the sole argument. Special case that does not overlap
     // with normal usage since there are always at least three arguments in 
-    // normal usage (runscript, executable and script-path).
+    // normal usage (herescript, executable and script-path).
     if (argc == 2 && strcmp(argv[1], "--help") == 0) {
         printf(
-            "Usage: runscript <executable> <script> [args...]\n"
+            "Usage: herescript <executable> <script> [args...]\n"
             "\n"
-            "Runscript is a modern, structured interpreter launcher designed to extend\n"
+            "Herescript is a modern, structured interpreter launcher designed to extend\n"
             "the idiom of starting shebang scripts with #!/usr/bin/env. Instead, scripts begin\n"
-            "with '#!/usr/bin/runscript EXECUTABLE' and arguments are specified using\n"
+            "with '#!/usr/bin/herescript EXECUTABLE' and arguments are specified using\n"
             "continuation lines that each begin with '#!'. For example:\n"
             "\n"
-            "    #!/usr/bin/runscript python3\n"
+            "    #!/usr/bin/herescript python3\n"
             "    #! --verbose\n"
             "    #! ${}\n"
             "\n"
             "Here '#! --verbose' adds --verbose as an argument, and '#! ${}' controls\n"
             "exactly where the script filename appears in the argument list.\n"
             "\n"
-            "To learn more about the exact syntax go to https://github.com/sfkleach/runscript.\n"
+            "To learn more about the exact syntax go to https://github.com/sfkleach/herescript.\n"
             "It supports:\n"
             "  - Setting environment variables scoped to the script invocation.\n"
             "  - Placing options before, after, or interleaved with the script arguments.\n"
@@ -501,7 +501,7 @@ int main(int argc, char **argv) {
     const char *script_arg = argv[2];
     char resolved_path[PATH_MAX];
     if (!realpath(script_arg, resolved_path)) {
-        perror("runscript: realpath");
+        perror("herescript: realpath");
         fprintf(stderr, "  Hint: Ensure the script file exists and is accessible.\n");
         return EXIT_GENERAL_ERROR;
     }
@@ -510,7 +510,7 @@ int main(int argc, char **argv) {
     // Open script file.
     FILE *fp = fopen(script_path, "r");
     if (!fp) {
-        perror("runscript: fopen");
+        perror("herescript: fopen");
         fprintf(stderr, "  Hint: Ensure the script file exists and is readable.\n");
         return EXIT_GENERAL_ERROR;
     }
@@ -521,7 +521,7 @@ int main(int argc, char **argv) {
     ssize_t line_len = getline(&line, &line_cap, fp);
     
     if (line_len < 0) {
-        fprintf(stderr, "runscript: empty script file\n");
+        fprintf(stderr, "herescript: empty script file\n");
         fprintf(stderr, "  Hint: Script must start with a shebang line.\n");
         fclose(fp);
         return EXIT_MALFORMED_SHEBANG;
@@ -533,10 +533,10 @@ int main(int argc, char **argv) {
         line_len--;
     }
     
-    // Check shebang format: #!<runscript-path> <executable>
-    // We don't check the runscript path (since it's ourself), just check the prefix.
+    // Check shebang format: #!<herescript-path> <executable>
+    // We don't check the herescript path (since it's ourself), just check the prefix.
     if (line_len < 2 || line[0] != '#' || line[1] != '!') {
-        fprintf(stderr, "runscript: malformed shebang line\n");
+        fprintf(stderr, "herescript: malformed shebang line\n");
         fprintf(stderr, "  Expected: a line starting with #!\n");
         fprintf(stderr, "  Got: %s\n", line);
         fclose(fp);
@@ -547,16 +547,16 @@ int main(int argc, char **argv) {
     // Find the first space character after #!
     char *space = strchr(line + 2, ' ');
     if (!space) {
-        fprintf(stderr, "runscript: no executable specified in shebang\n");
-        fprintf(stderr, "  Hint: The shebang must specify an executable after the runscript path.\n");
+        fprintf(stderr, "herescript: no executable specified in shebang\n");
+        fprintf(stderr, "  Hint: The shebang must specify an executable after the herescript path.\n");
         fclose(fp);
         free(line);
         return EXIT_MALFORMED_SHEBANG;
     }
     
     if (strlen(exec_part) == 0) {
-        fprintf(stderr, "runscript: no executable specified in shebang\n");
-        fprintf(stderr, "  Hint: The shebang must specify an executable after #!/usr/bin/runscript.\n");
+        fprintf(stderr, "herescript: no executable specified in shebang\n");
+        fprintf(stderr, "  Hint: The shebang must specify an executable after #!/usr/bin/herescript.\n");
         fclose(fp);
         free(line);
         return EXIT_MALFORMED_SHEBANG;
@@ -564,8 +564,8 @@ int main(int argc, char **argv) {
     
     // Check for options (space in executable).
     if (strchr(exec_part, ' ') || strchr(exec_part, '\t')) {
-        fprintf(stderr, "runscript: shebang contains options, which are not allowed\n");
-        fprintf(stderr, "  Expected: #!/usr/bin/runscript <executable>\n");
+        fprintf(stderr, "herescript: shebang contains options, which are not allowed\n");
+        fprintf(stderr, "  Expected: #!/usr/bin/herescript <executable>\n");
         fprintf(stderr, "  Got: %s\n", line);
         fprintf(stderr, "  Hint: Options to the executable should be specified in header lines,\n");
         fprintf(stderr, "        not in the shebang line.\n");
@@ -597,7 +597,7 @@ int main(int argc, char **argv) {
     free(line);
     fclose(fp);
     
-    // Add any command-line arguments passed to runscript (after the script name).
+    // Add any command-line arguments passed to herescript (after the script name).
     for (int i = 3; i < argc; i++) {
         append_string_array(&arguments, strdup_safe(argv[i]));
     }
@@ -638,7 +638,7 @@ int main(int argc, char **argv) {
     }
     
     // If we reach here, exec failed.
-    perror("runscript: exec");
+    perror("herescript: exec");
     fprintf(stderr, "  Hint: Ensure '%s' is installed and accessible.\n", executable);
     return EXIT_EXEC_FAILURE;
 }

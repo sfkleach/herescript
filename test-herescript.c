@@ -1,8 +1,8 @@
 /*
- * test-runscript.c
+ * test-herescript.c
  *
  * A test utility that outputs JSON containing the environment variables
- * and command-line arguments it receives. Used for testing runscript behavior.
+ * and command-line arguments it receives. Used for testing herescript behavior.
  */
 
 #define _POSIX_C_SOURCE 200809L

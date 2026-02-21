@@ -1,11 +1,11 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -O2
-TARGET = _build/runscript
-TEST_TARGET = _build/test-runscript
-SRC = runscript.c
-TEST_SRC = test-runscript.c
+TARGET = _build/herescript
+TEST_TARGET = _build/test-herescript
+SRC = herescript.c
+TEST_SRC = test-herescript.c
 
-.PHONY: all clean install test-runscript
+.PHONY: all clean install test-herescript
 
 all: $(TARGET) $(TEST_TARGET)
 
@@ -21,4 +21,4 @@ clean:
 	rm -f $(TARGET) $(TEST_TARGET)
 
 install: $(TARGET)
-	install -m 755 $(TARGET) /usr/local/bin/runscript
+	install -m 755 $(TARGET) /usr/local/bin/herescript

@@ -14,7 +14,7 @@ Write a python script in `scripts/functest.py` that runs a series of tests.
 - Each test is executed as follows.
     1. A test script is generated in the build folder (_build/) by copying
        the script into a file `_build/{{NAME}}.sh`
-    2. The first line of the script must be `#!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript`
+    2. The first line of the script must be `#!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript`
        or execution is blocked. This is a safety feature.
     3. Any occurrences of `${BUILD_DIR}` in that script are replaced by 
        the absolute path of the build folder.

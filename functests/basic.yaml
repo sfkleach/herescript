@@ -2,18 +2,18 @@
 # ${BUILD_DIR} to allow for testing without hardcoding the build path.
 build_dir: "${BUILD_DIR}"
 
-# This file contains a variety of test cases for runscript, covering different features and edge cases.
+# This file contains a variety of test cases for herescript, covering different features and edge cases.
 tests:
   - name: run-echo
     script: |
-      #!${BUILD_DIR}/runscript echo
+      #!${BUILD_DIR}/herescript echo
       #! Hello, World!
     output: |
       Hello, World! ${BUILD_DIR}/run-echo.sh
 
   - name: comprehensive-test
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #! First normal arg
       #!# This comment should be ignored
       #! MYVAR=hello
@@ -30,7 +30,7 @@ tests:
               "MYVAR=hello"
           ],
           "argv": [
-              "${BUILD_DIR}/test-runscript",
+              "${BUILD_DIR}/test-herescript",
               "First normal arg",
               "Second arg with hello",
               "\n\t escapes work",
@@ -46,7 +46,7 @@ tests:
     env:
       BASE_URL: https://zark.com
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #!# This is a comment - it will be ignored
       #!#
       #! BASE_URL:=https://example.com
@@ -68,7 +68,7 @@ tests:
               "PORT=8080"
           ],
           "argv": [
-              "${BUILD_DIR}/test-runscript",
+              "${BUILD_DIR}/test-herescript",
               "--base-url=https://zark.com",
               "--port=8080",
               "--config=production.conf",
@@ -84,7 +84,7 @@ tests:
 
   - name: simple-test
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #! --option1
       #! TEST_VAR=test_value
     output: |
@@ -93,7 +93,7 @@ tests:
               "TEST_VAR=test_value"
           ],
           "argv": [
-              "${BUILD_DIR}/test-runscript",
+              "${BUILD_DIR}/test-herescript",
               "--option1",
               "${BUILD_DIR}/simple-test.sh"
           ]
@@ -101,7 +101,7 @@ tests:
 
   - name: test2
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #! --option1
       #! TEST_VAR=test_value
       #! ANOTHER_VAR:=default
@@ -113,7 +113,7 @@ tests:
               "ANOTHER_VAR=default"
           ],
           "argv": [
-              "${BUILD_DIR}/test-runscript",
+              "${BUILD_DIR}/test-herescript",
               "--option1",
               "--arg=test_value",
               "${BUILD_DIR}/test2.sh"
@@ -123,7 +123,7 @@ tests:
     env:
       TEST_PRE: this_should_not_be_overridden
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #! TEST_PRE:=should_not_be_set
       #! TEST_NEW:=should_be_set
     output: |
@@ -133,28 +133,28 @@ tests:
               "TEST_NEW=should_be_set"
           ],
           "argv": [
-              "${BUILD_DIR}/test-runscript",
+              "${BUILD_DIR}/test-herescript",
               "${BUILD_DIR}/test-conditional.sh"
           ]
       }
 
   - name: test-echo
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
-      #! Hello from runscript!
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! Hello from herescript!
     output: |
       {
           "env": [
           ],
           "argv": [
-              "${BUILD_DIR}/test-runscript",
-              "Hello from runscript!",
+              "${BUILD_DIR}/test-herescript",
+              "Hello from herescript!",
               "${BUILD_DIR}/test-echo.sh"
           ]
       }
   - name: test-empty
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #!# The next argument is an empty argument:
       #!
       #!# But this is not.
@@ -164,7 +164,7 @@ tests:
           "env": [
           ],
           "argv": [
-              "${BUILD_DIR}/test-runscript",
+              "${BUILD_DIR}/test-herescript",
               "",
               "argument2",
               "${BUILD_DIR}/test-empty.sh"
@@ -172,17 +172,17 @@ tests:
       }
   - name: test-error-shebang-option
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript --option
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript --option
       #! This should fail
     exit_code: 3
   - name: test-error-undefined-variable
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #! UNDEFINED_VAR=${DOES_NOT_EXIST}
     exit_code: 2
   - name: test-ignored-lines
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #!# First arg
       #!# Second arg
     output: |
@@ -190,14 +190,14 @@ tests:
           "env": [
           ],
           "argv": [
-              "${BUILD_DIR}/test-runscript",
+              "${BUILD_DIR}/test-herescript",
               "${BUILD_DIR}/test-ignored-lines.sh"
           ]
       }
 
   - name: test-script
     script: |
-      #!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #! --option1
       #! ARG_VAR=arg_value
       #! TEST_VAR:=default_value
@@ -214,7 +214,7 @@ tests:
               "TEST_VAR=default_value"
           ],
           "argv": [
-              "${BUILD_DIR}/test-runscript",
+              "${BUILD_DIR}/test-herescript",
               "--option1",
               "--flag=value",
               "--flag2=value2",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Functional test runner for runscript.
+"""Functional test runner for herescript.
 
 Run from the top-level project directory:
     uv run --project functests python3 functests/functest.py
@@ -24,8 +24,8 @@ import yaml
 # The canonical form of the first shebang line that the safety check accepts.
 # Scripts whose first line does not match this pattern (after trimming) are
 # blocked from execution to prevent accidental execution of untrusted scripts.
-_SAFE_SHEBANG_TEMPLATE_1 = "#!${BUILD_DIR}/runscript ${BUILD_DIR}/test-runscript"
-_SAFE_SHEBANG_TEMPLATE_2 = "#!${BUILD_DIR}/runscript echo"
+_SAFE_SHEBANG_TEMPLATE_1 = "#!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript"
+_SAFE_SHEBANG_TEMPLATE_2 = "#!${BUILD_DIR}/herescript echo"
 
 
 def get_build_dir() -> Path:
@@ -106,7 +106,7 @@ class Main:
         if not lines:
             return False, "", "", {}
 
-        # Safety check: only allow scripts whose shebang invokes our test-runscript.
+        # Safety check: only allow scripts whose shebang invokes our test-herescript.
         if not self.check_safe_shebang(lines[0]):
             print(
                 f"  BLOCKED: {name} — shebang does not match the permitted pattern\n"
@@ -131,7 +131,7 @@ class Main:
 
         # Execute with a clean base environment, extended by any bindings declared
         # in the test's env: field, so that inherited variables do not contaminate
-        # the JSON env array that test-runscript prints.
+        # the JSON env array that test-herescript prints.
         proc = subprocess.run(
             [script_path],
             capture_output=True,

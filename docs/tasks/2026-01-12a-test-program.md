@@ -1,7 +1,7 @@
-# test-runscript.c
+# test-herescript.c
 
-`test-runscript.c` is a small command-line C program that we use for testing the
-behaviour of runscript. It accepts any number of arguments. It then writes to
+`test-herescript.c` is a small command-line C program that we use for testing the
+behaviour of herescript. It accepts any number of arguments. It then writes to
 stdout a JSON blob which displays the environment and arguments in this format:
 
 ```json
@@ -15,7 +15,7 @@ stdout a JSON blob which displays the environment and arguments in this format:
 }
 ```
 
-For example, running `test-runscript foo bar gort` will output something like:
+For example, running `test-herescript foo bar gort` will output something like:
 
 ```json
 {
@@ -27,7 +27,7 @@ For example, running `test-runscript foo bar gort` will output something like:
         ...
     ],
     "argv": [
-        "test-runscript",
+        "test-herescript",
         "foo",
         "bar",
         "gort"
@@ -38,8 +38,8 @@ For example, running `test-runscript foo bar gort` will output something like:
 
 ## Part 1: Implement
 
-- Implement test-runscript.c and add it to the Makefile as a separate build target
-  `test-runscript`. The Justfile should compile both *.c files. The build should
-  be placed in _build, similarly to runscript.
+- Implement test-herescript.c and add it to the Makefile as a separate build target
+  `test-herescript`. The Justfile should compile both *.c files. The build should
+  be placed in _build, similarly to herescript.
 - The order of environment variables should be as received.
 - Errors should be logged to stderr and a non-zero exit status code returned.
