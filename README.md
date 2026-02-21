@@ -1,5 +1,7 @@
 # herescript
 
+[![Build and Test](https://github.com/sfkleach/herescript/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/sfkleach/herescript/actions/workflows/build-and-test.yml)
+
 `herescript` is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism. It provides:
 
 - multi‑line argument declarations
