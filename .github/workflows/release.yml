@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (use v0.0.0 for a dry run — CHANGELOG check is skipped)'
+        required: true
+        default: 'v0.0.0'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset_name: herescript-linux
+          - os: macos-latest
+            asset_name: herescript-macos
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc make
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build with -Werror
+        # -Werror is passed as a CI-only override; it is not in the Makefile
+        # default CFLAGS so that local developer builds are unaffected.
+        run: make CFLAGS="-Wall -Wextra -std=c11 -O2 -Werror" all
+
+      - name: Run functional tests
+        run: just functest
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: _build/herescript
+
+  create-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine if prerelease
+        id: prerelease
+        run: |
+          if [[ "${{ steps.tag.outputs.tag }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-.+ ]]; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract CHANGELOG section
+        id: changelog
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          if [ "$TAG" = "v0.0.0" ]; then
+            # Dry-run mode: skip the CHANGELOG check.
+            echo "body=Dry run release." >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "body<<ENDOFBODY"
+              python3 scripts/extract-changelog.py "$TAG"
+              echo "ENDOFBODY"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: herescript-linux
+          path: artifacts/linux
+
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: herescript-macos
+          path: artifacts/macos
+
+      - name: Prepare release assets
+        run: |
+          cp artifacts/linux/herescript  herescript-linux
+          cp artifacts/macos/herescript  herescript-macos
+          chmod +x herescript-linux herescript-macos
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          body: ${{ steps.changelog.outputs.body }}
+          prerelease: ${{ steps.prerelease.outputs.is_prerelease }}
+          files: |
+            herescript-linux
+            herescript-macos

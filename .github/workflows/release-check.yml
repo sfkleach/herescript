@@ -1,0 +1,56 @@
+name: Release Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-changelog:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check CHANGELOG top section is not Unreleased
+        run: python3 scripts/check-changelog.py
+
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # The compiler matrix covers GCC and Clang on Ubuntu where both are
+        # readily available. On macOS the system compiler is Clang; installing
+        # a real GCC via Homebrew is fragile so only Clang is tested there.
+        include:
+          - os: ubuntu-latest
+            cc: gcc
+          - os: ubuntu-latest
+            cc: clang
+          - os: macos-latest
+            cc: clang
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc clang make
+
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build with -Werror
+        # -Werror is passed as a CI-only override; it is not in the Makefile
+        # default CFLAGS so that local developer builds are unaffected.
+        run: make CC=${{ matrix.cc }} CFLAGS="-Wall -Wextra -std=c11 -O2 -Werror" all
+
+      - name: Run functional tests
+        run: just functest
