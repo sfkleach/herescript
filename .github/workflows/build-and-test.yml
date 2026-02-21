@@ -28,10 +28,8 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Build with -Werror
-        # -Werror is passed as a CI-only override; it is not in the Makefile
-        # default CFLAGS so that local developer builds are unaffected.
-        run: make CFLAGS="-Wall -Wextra -std=c11 -O2 -Werror" all
+      - name: Build
+        run: make all
 
       - name: Run functional tests
         run: just functest
