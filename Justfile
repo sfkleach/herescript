@@ -37,3 +37,4 @@ quick-start-ubuntu:
     command -v cppcheck || sudo apt install -y cppcheck
     command -v make || sudo apt install -y make
     command -v gcc || sudo apt install -y gcc
+    command -v clang || sudo apt install -y clang
