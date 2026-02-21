@@ -42,3 +42,7 @@ It serves as a reminder to myself as to what I have not done.
 - It verifies the build works and the tests pass
   - For a platform matrix of ubuntu-latest and macos-latest
   - A compiler matrix of GCC & Clang
+
+## Finally
+
+Review the [definition of done](../definition-of-done.md) before closing the task.
