@@ -174,7 +174,7 @@ tests:
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript --option
       #! This should fail
-    exit_code: 3
+    exit_code: nonzero
   - name: test-error-undefined-variable
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript

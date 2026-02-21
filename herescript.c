@@ -494,15 +494,18 @@ int main(int argc, char **argv) {
     // The first argument is the path to the executable to be launched (from the shebang).
     const char *exec_part = argv[1];
     
-    // Get script path and resolve to canonical path.
+    // Get script path and resolve to canonical path. Passing NULL as the second
+    // argument to realpath causes it to allocate a suitably-sized buffer, avoiding
+    // any dependency on PATH_MAX (which POSIX permits implementations to leave
+    // undefined when no fixed path-length limit exists).
     const char *script_arg = argv[2];
-    char resolved_path[PATH_MAX];
-    if (!realpath(script_arg, resolved_path)) {
+    char *resolved_path = realpath(script_arg, NULL);
+    if (!resolved_path) {
         perror("herescript: realpath");
         fprintf(stderr, "  Hint: Ensure the script file `%s` exists and is accessible.\n", script_arg);
         return EXIT_GENERAL_ERROR;
     }
-    script_path = strdup_safe(resolved_path);
+    script_path = resolved_path;
     
     // Open script file.
     FILE *fp = fopen(script_path, "r");
@@ -626,8 +629,15 @@ int main(int argc, char **argv) {
     //     printf("Debug: argv[%zu]: %s\n", i, new_argv[i]);
     // }
     
-    // Execute.
-    // If executable contains '/', use it as a path; otherwise search PATH.
+    // Execute. All memory allocated during this process — arguments, bindings,
+    // script_path, executable, new_argv — is intentionally left unfreed. On a
+    // successful exec the kernel replaces the process image entirely, so the
+    // allocations simply cease to exist. On an error return main() exits
+    // immediately afterward and the OS reclaims everything. There is no code
+    // path in which this process continues running after this point, so
+    // explicit teardown would be pure ceremony with no practical effect.
+    //
+    // If executable contains '/', use it as a direct path; otherwise search PATH.
     if (strchr(executable, '/')) {
         execve(executable, new_argv, environ);
     } else {

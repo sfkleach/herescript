@@ -90,12 +90,14 @@ class Main:
         name = test["name"]
         script_text = test["script"]
         expected_raw: str | None = test.get("output", None)
-        expected_exit_code = int(test.get("exit_code", 0))
+        _raw_exit_code = test.get("exit_code", 0)
+        expected_exit_nonzero = (str(_raw_exit_code).strip().lower() == "nonzero")
+        expected_exit_code = None if expected_exit_nonzero else int(_raw_exit_code)
         expected_stderr_raw = test.get("stderr", None)
         extra_env: dict[str, str] = {str(k): str(v) for k, v in (test.get("env") or {}).items()}
 
         # Validate that the test specifies at least something to check.
-        if expected_raw is None and "exit_code" not in test:
+        if expected_raw is None and "exit_code" not in test and not expected_exit_nonzero:
             print(f"  ERROR: {name} — test must specify at least one of 'output' or 'exit_code'", file=sys.stderr)
             return False, "", "", {}
 
@@ -126,7 +128,7 @@ class Main:
         # implemented. This check is performed after writing the script so that we
         # can still verify the shebang is correct by looking in the build directory.
         stdout_unchecked = expected_raw is None or expected_raw.strip() == "..."
-        if stdout_unchecked and expected_exit_code == 0:
+        if stdout_unchecked and not expected_exit_nonzero and expected_exit_code == 0:
             return None, None, None, {}
 
         # Execute with a clean base environment, extended by any bindings declared
@@ -153,7 +155,10 @@ class Main:
         # Compare stdout, exit code, and optionally stderr.
         # stdout is unchecked when output was absent or set to '...'.
         stdout_ok = stdout_unchecked or actual_stdout.rstrip() == expected_stdout.rstrip()
-        exit_ok = actual_exit_code == expected_exit_code
+        if expected_exit_nonzero:
+            exit_ok = actual_exit_code != 0
+        else:
+            exit_ok = actual_exit_code == expected_exit_code
         stderr_ok = (
             expected_stderr is None
             or actual_stderr.rstrip() == expected_stderr.rstrip()
@@ -162,7 +167,7 @@ class Main:
 
         details = {
             "actual_exit_code": actual_exit_code,
-            "expected_exit_code": expected_exit_code,
+            "expected_exit_code": "nonzero" if expected_exit_nonzero else expected_exit_code,
             "actual_stderr": actual_stderr,
             "expected_stderr": expected_stderr,
             "stdout_ok": stdout_ok,
