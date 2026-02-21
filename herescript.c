@@ -357,16 +357,15 @@ static void process_header_line(const char *line) {
     }
     
     // Apply escape processing unless disabled.
-    char *processed = body;
     if (!meta.no_escape) {
-        processed = process_escapes(body);
+        char *processed = process_escapes(body);
         free(body);
         body = processed;
     }
     
     // Apply substitution processing unless disabled.
     if (!meta.no_subst) {
-        processed = process_substitution(body);
+        char *processed = process_substitution(body);
         free(body);
         body = processed;
     }
@@ -380,14 +379,14 @@ static void process_header_line(const char *line) {
     
     // Classification: binding or argument?
     bool is_binding = false;
-    bool conditional = false;
     
     if (!meta.no_binding && body[0] != '-') {
         // Check for NAME=VALUE or NAME:=VALUE.
         char *eq = strchr(body, '=');
         if (eq && eq > body) {
             // Check if it's :=.
-            if (eq > body && eq[-1] == ':') {
+            bool conditional = false;
+            if (eq[-1] == ':') {
                 conditional = true;
                 eq--;  // Point to the ':'.
             }
@@ -406,7 +405,7 @@ static void process_header_line(const char *line) {
                 is_binding = true;
                 
                 // Extract value (after = or :=).
-                char *value_start = eq + (conditional ? 2 : 1);
+                const char *value_start = eq + (conditional ? 2 : 1);
                 char *value = strdup_safe(value_start);
                 
                 // Apply binding immediately so subsequent substitutions can use it.
@@ -545,7 +544,7 @@ int main(int argc, char **argv) {
     }
     
     // Find the first space character after #!
-    char *space = strchr(line + 2, ' ');
+    const char *space = strchr(line + 2, ' ');
     if (!space) {
         fprintf(stderr, "herescript: no executable specified in shebang\n");
         fprintf(stderr, "  Hint: The shebang must specify an executable after the herescript path.\n");
