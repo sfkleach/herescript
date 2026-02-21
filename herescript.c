@@ -499,7 +499,7 @@ int main(int argc, char **argv) {
     char resolved_path[PATH_MAX];
     if (!realpath(script_arg, resolved_path)) {
         perror("herescript: realpath");
-        fprintf(stderr, "  Hint: Ensure the script file exists and is accessible.\n");
+        fprintf(stderr, "  Hint: Ensure the script file `%s` exists and is accessible.\n", script_arg);
         return EXIT_GENERAL_ERROR;
     }
     script_path = strdup_safe(resolved_path);
@@ -508,7 +508,7 @@ int main(int argc, char **argv) {
     FILE *fp = fopen(script_path, "r");
     if (!fp) {
         perror("herescript: fopen");
-        fprintf(stderr, "  Hint: Ensure the script file exists and is readable.\n");
+        fprintf(stderr, "  Hint: Ensure the script file `%s` exists and is readable.\n", script_arg);
         return EXIT_GENERAL_ERROR;
     }
     
