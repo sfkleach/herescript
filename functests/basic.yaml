@@ -224,3 +224,19 @@ tests:
               "${BUILD_DIR}/test-script.sh"
           ]
       }
+
+  - name: new-style-comment
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      ## This comment line should be silently discarded.
+      #! --after-comment
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--after-comment",
+              "${BUILD_DIR}/new-style-comment.sh"
+          ]
+      }

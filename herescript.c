@@ -587,7 +587,16 @@ int main(int argc, char **argv) {
         }
         
         // Check if this is a header line.
-        if (line_len < 2 || line[0] != '#' || line[1] != '!') {
+        if (line_len < 2 || line[0] != '#') {
+            break;  // End of header block.
+        }
+        
+        if (line[1] == '#') {
+            // New-style comment line: discard.
+            continue;
+        }
+        
+        if (line[1] != '!') {
             break;  // End of header block.
         }
         
