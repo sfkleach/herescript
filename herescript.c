@@ -272,38 +272,72 @@ static char *process_substitution(const char *input) {
 // New-style Header Line Parsing (#:, #|)
 // ============================================================================
 
+// Append a single character to a dynamically growing buffer. The buffer is
+// reallocated when it runs out of space.
+static void buf_append(char **buf, size_t *len, size_t *cap, char c) {
+    if (*len + 1 >= *cap) {
+        *cap *= 2;
+        *buf = realloc(*buf, *cap);
+        if (!*buf) {
+            perror("realloc");
+            exit(EXIT_GENERAL_ERROR);
+        }
+    }
+    (*buf)[(*len)++] = c;
+}
+
 // Process a #: arguments line using shell-like tokenisation.
-// Step 2a: whitespace-only tokenisation. Each run of non-whitespace characters
-// after the "#:" prefix becomes one argument. Quoting and variable substitution
-// are not yet supported and will be added in subsequent steps.
+// Step 2b: single-quoted spans are treated as literal text with no backslash
+// escapes or interpolation. Quoted content is concatenated with any adjacent
+// unquoted characters to form a single token (e.g. foo'bar baz' → "foobar baz").
+// Unquoted whitespace still acts as a token separator.
 static void process_colon_line(const char *line) {
     // Skip the "#:" prefix.
     const char *p = line + 2;
 
+    // Allocate an initial output buffer for building tokens.
+    size_t buf_cap = 64;
+    char *buf = malloc(buf_cap);
+    if (!buf) {
+        perror("malloc");
+        exit(EXIT_GENERAL_ERROR);
+    }
+
     while (*p) {
-        // Skip leading whitespace.
+        // Skip inter-token whitespace.
         while (*p && isspace((unsigned char)*p)) {
             p++;
         }
         if (!*p) break;
 
-        // Find end of token.
-        const char *token_start = p;
+        // Accumulate one token.
+        size_t buf_len = 0;
         while (*p && !isspace((unsigned char)*p)) {
-            p++;
+            if (*p == '\'') {
+                // Enter single-quoted span: consume until closing quote.
+                // No backslash escapes or interpolation inside single quotes.
+                p++;  // Skip opening quote.
+                while (*p && *p != '\'') {
+                    buf_append(&buf, &buf_len, &buf_cap, *p++);
+                }
+                if (*p == '\'') {
+                    p++;  // Skip closing quote.
+                } else {
+                    fprintf(stderr, "herescript: unterminated single quote in #: line\n");
+                    free(buf);
+                    exit(EXIT_INVALID_HEADER);
+                }
+            } else {
+                buf_append(&buf, &buf_len, &buf_cap, *p++);
+            }
         }
 
-        // Append the token as an argument.
-        size_t token_len = (size_t)(p - token_start);
-        char *token = malloc(token_len + 1);
-        if (!token) {
-            perror("malloc");
-            exit(EXIT_GENERAL_ERROR);
-        }
-        memcpy(token, token_start, token_len);
-        token[token_len] = '\0';
-        append_string_array(&arguments, token);
+        // Append token as a NUL-terminated argument.
+        buf[buf_len] = '\0';
+        append_string_array(&arguments, strdup_safe(buf));
     }
+
+    free(buf);
 }
 
 // ============================================================================
