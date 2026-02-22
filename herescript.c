@@ -269,6 +269,44 @@ static char *process_substitution(const char *input) {
 }
 
 // ============================================================================
+// New-style Header Line Parsing (#:, #|)
+// ============================================================================
+
+// Process a #: arguments line using shell-like tokenisation.
+// Step 2a: whitespace-only tokenisation. Each run of non-whitespace characters
+// after the "#:" prefix becomes one argument. Quoting and variable substitution
+// are not yet supported and will be added in subsequent steps.
+static void process_colon_line(const char *line) {
+    // Skip the "#:" prefix.
+    const char *p = line + 2;
+
+    while (*p) {
+        // Skip leading whitespace.
+        while (*p && isspace((unsigned char)*p)) {
+            p++;
+        }
+        if (!*p) break;
+
+        // Find end of token.
+        const char *token_start = p;
+        while (*p && !isspace((unsigned char)*p)) {
+            p++;
+        }
+
+        // Append the token as an argument.
+        size_t token_len = (size_t)(p - token_start);
+        char *token = malloc(token_len + 1);
+        if (!token) {
+            perror("malloc");
+            exit(EXIT_GENERAL_ERROR);
+        }
+        memcpy(token, token_start, token_len);
+        token[token_len] = '\0';
+        append_string_array(&arguments, token);
+    }
+}
+
+// ============================================================================
 // Header Line Parsing
 // ============================================================================
 
@@ -593,6 +631,12 @@ int main(int argc, char **argv) {
         
         if (line[1] == '#') {
             // New-style comment line: discard.
+            continue;
+        }
+
+        if (line[1] == ':') {
+            // New-style arguments line: shell-like tokenisation.
+            process_colon_line(line);
             continue;
         }
         
