@@ -273,3 +273,20 @@ tests:
               "${BUILD_DIR}/new-style-args-single-quotes.sh"
           ]
       }
+
+  - name: new-style-args-dollar-single-quotes
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: $'hello\tworld' $'back\\slash' $'space\sinside'
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello\tworld",
+              "back\\slash",
+              "space inside",
+              "${BUILD_DIR}/new-style-args-dollar-single-quotes.sh"
+          ]
+      }
