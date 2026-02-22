@@ -261,7 +261,7 @@ tests:
   - name: new-style-args-single-quotes
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #: 'hello world' foo'bar baz'
+      #: 'hello world' foo'bar baz'boink
     output: |
       {
           "env": [
@@ -269,7 +269,7 @@ tests:
           "argv": [
               "${BUILD_DIR}/test-herescript",
               "hello world",
-              "foobar baz",
+              "foobar bazboink",
               "${BUILD_DIR}/new-style-args-single-quotes.sh"
           ]
       }

@@ -272,18 +272,41 @@ static char *process_substitution(const char *input) {
 // New-style Header Line Parsing (#:, #|)
 // ============================================================================
 
-// Append a single character to a dynamically growing buffer. The buffer is
-// reallocated when it runs out of space.
-static void buf_append(char **buf, size_t *len, size_t *cap, char c) {
-    if (*len + 1 >= *cap) {
-        *cap *= 2;
-        *buf = realloc(*buf, *cap);
-        if (!*buf) {
-            perror("realloc");
-            exit(EXIT_GENERAL_ERROR);
-        }
+// Growable byte buffer for token construction.
+typedef struct {
+    char  *data;
+    size_t len;
+    size_t cap;
+} ByteBuf;
+
+static void bytebuf_init(ByteBuf *b, size_t initial_cap) {
+    b->data = malloc(initial_cap);
+    if (!b->data) { perror("malloc"); exit(EXIT_GENERAL_ERROR); }
+    b->len = 0;
+    b->cap = initial_cap;
+}
+
+static void bytebuf_append(ByteBuf *b, char c) {
+    if (b->len + 1 >= b->cap) {
+        b->cap *= 2;
+        b->data = realloc(b->data, b->cap);
+        if (!b->data) { perror("realloc"); exit(EXIT_GENERAL_ERROR); }
     }
-    (*buf)[(*len)++] = c;
+    b->data[b->len++] = c;
+}
+
+// Returns a strdup'd NUL-terminated copy of the accumulated bytes and resets
+// the length to zero so the buffer can be reused for the next token.
+static char *bytebuf_take(ByteBuf *b) {
+    b->data[b->len] = '\0';
+    char *s = strdup_safe(b->data);
+    b->len = 0;
+    return s;
+}
+
+static void bytebuf_free(ByteBuf *b) {
+    free(b->data);
+    b->data = NULL;
 }
 
 // Process a #: arguments line using shell-like tokenisation.
@@ -294,50 +317,37 @@ static void buf_append(char **buf, size_t *len, size_t *cap, char c) {
 static void process_colon_line(const char *line) {
     // Skip the "#:" prefix.
     const char *p = line + 2;
-
-    // Allocate an initial output buffer for building tokens.
-    size_t buf_cap = 64;
-    char *buf = malloc(buf_cap);
-    if (!buf) {
-        perror("malloc");
-        exit(EXIT_GENERAL_ERROR);
-    }
+    ByteBuf buf;
+    bytebuf_init(&buf, 64);
 
     while (*p) {
         // Skip inter-token whitespace.
-        while (*p && isspace((unsigned char)*p)) {
-            p++;
-        }
+        while (*p && isspace((unsigned char)*p)) p++;
         if (!*p) break;
 
         // Accumulate one token.
-        size_t buf_len = 0;
         while (*p && !isspace((unsigned char)*p)) {
             if (*p == '\'') {
                 // Enter single-quoted span: consume until closing quote.
                 // No backslash escapes or interpolation inside single quotes.
                 p++;  // Skip opening quote.
-                while (*p && *p != '\'') {
-                    buf_append(&buf, &buf_len, &buf_cap, *p++);
-                }
+                while (*p && *p != '\'') bytebuf_append(&buf, *p++);
                 if (*p == '\'') {
                     p++;  // Skip closing quote.
                 } else {
                     fprintf(stderr, "herescript: unterminated single quote in #: line\n");
-                    free(buf);
+                    bytebuf_free(&buf);
                     exit(EXIT_INVALID_HEADER);
                 }
             } else {
-                buf_append(&buf, &buf_len, &buf_cap, *p++);
+                bytebuf_append(&buf, *p++);
             }
         }
 
-        // Append token as a NUL-terminated argument.
-        buf[buf_len] = '\0';
-        append_string_array(&arguments, strdup_safe(buf));
+        append_string_array(&arguments, bytebuf_take(&buf));
     }
 
-    free(buf);
+    bytebuf_free(&buf);
 }
 
 // ============================================================================
