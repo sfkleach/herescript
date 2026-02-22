@@ -309,11 +309,29 @@ static void bytebuf_free(ByteBuf *b) {
     b->data = NULL;
 }
 
+// Append the character produced by a backslash escape sequence. The argument
+// is the character immediately following the backslash. Unrecognised escapes
+// emit the backslash and the character literally.
+static void bytebuf_append_escape(ByteBuf *b, char c) {
+    switch (c) {
+        case '\\': bytebuf_append(b, '\\'); break;
+        case '\'': bytebuf_append(b, '\''); break;
+        case '"':  bytebuf_append(b, '"');  break;
+        case 's':  bytebuf_append(b, ' ');  break;
+        case 'n':  bytebuf_append(b, '\n'); break;
+        case 't':  bytebuf_append(b, '\t'); break;
+        case 'r':  bytebuf_append(b, '\r'); break;
+        default:
+            bytebuf_append(b, '\\');
+            bytebuf_append(b, c);
+            break;
+    }
+}
+
 // Process a #: arguments line using shell-like tokenisation.
-// Step 2b: single-quoted spans are treated as literal text with no backslash
-// escapes or interpolation. Quoted content is concatenated with any adjacent
-// unquoted characters to form a single token (e.g. foo'bar baz' → "foobar baz").
-// Unquoted whitespace still acts as a token separator.
+// Step 2c: $'...' enables backslash escape processing inside a single-quoted
+// span. Plain '...' spans remain literal (no escapes). Both forms concatenate
+// with adjacent unquoted or quoted text into a single token.
 static void process_colon_line(const char *line) {
     // Skip the "#:" prefix.
     const char *p = line + 2;
@@ -327,9 +345,27 @@ static void process_colon_line(const char *line) {
 
         // Accumulate one token.
         while (*p && !isspace((unsigned char)*p)) {
-            if (*p == '\'') {
-                // Enter single-quoted span: consume until closing quote.
-                // No backslash escapes or interpolation inside single quotes.
+            if (*p == '$' && *(p + 1) == '\'') {
+                // Escape-enabled single-quoted span: $'...'.
+                // Backslash escapes are processed; no interpolation.
+                p += 2;  // Skip $'.
+                while (*p && *p != '\'') {
+                    if (*p == '\\' && *(p + 1)) {
+                        p++;  // Skip backslash.
+                        bytebuf_append_escape(&buf, *p++);
+                    } else {
+                        bytebuf_append(&buf, *p++);
+                    }
+                }
+                if (*p == '\'') {
+                    p++;  // Skip closing quote.
+                } else {
+                    fprintf(stderr, "herescript: unterminated $' string in #: line\n");
+                    bytebuf_free(&buf);
+                    exit(EXIT_INVALID_HEADER);
+                }
+            } else if (*p == '\'') {
+                // Plain single-quoted span: literal, no escapes.
                 p++;  // Skip opening quote.
                 while (*p && *p != '\'') bytebuf_append(&buf, *p++);
                 if (*p == '\'') {
