@@ -240,3 +240,20 @@ tests:
               "${BUILD_DIR}/new-style-comment.sh"
           ]
       }
+
+  - name: new-style-args-whitespace
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: --foo --bar baz
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--foo",
+              "--bar",
+              "baz",
+              "${BUILD_DIR}/new-style-args-whitespace.sh"
+          ]
+      }
