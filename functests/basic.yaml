@@ -257,3 +257,19 @@ tests:
               "${BUILD_DIR}/new-style-args-whitespace.sh"
           ]
       }
+
+  - name: new-style-args-single-quotes
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: 'hello world' foo'bar baz'
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello world",
+              "foobar baz",
+              "${BUILD_DIR}/new-style-args-single-quotes.sh"
+          ]
+      }
