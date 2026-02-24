@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <stdbool.h>
 #include <limits.h>
+#include <sys/wait.h>
 
 // External environment variable (for execve).
 extern char **environ;
@@ -272,6 +273,27 @@ static char *process_substitution(const char *input) {
 // Header Line Parsing
 // ============================================================================
 
+static void execute_header_script(const char *script) {
+    // Execute the collected #: script using sh -c.
+    // The environment variable $SCRIPT_FILE is set to the absolute path.
+    
+    pid_t pid = fork();
+    if (pid == 0) {
+        // Child process - execute the shell script.
+        execl("/bin/sh", "sh", "-c", script, (char *)NULL);
+        perror("herescript: execl failed");
+        exit(EXIT_EXEC_FAILURE);
+    } else if (pid > 0) {
+        // Parent process - wait for child to complete.
+        int status;
+        waitpid(pid, &status, 0);
+    } else {
+        // Fork failed.
+        perror("herescript: fork failed");
+        exit(EXIT_GENERAL_ERROR);
+    }
+}
+
 static void parse_metachars(const char *line, Metachars *meta, size_t *body_start) {
     memset(meta, 0, sizeof(Metachars));
     
@@ -460,11 +482,12 @@ int main(int argc, char **argv) {
     }
 
     // Handle --help as the sole argument. Special case that does not overlap
-    // with normal usage since there are always at least three arguments in 
-    // normal usage (herescript, executable and script-path).
+    // with normal usage since there are always at least two arguments in 
+    // normal usage (herescript, script) or three (herescript, executable, script).
     if (argc == 2 && strcmp(argv[1], "--help") == 0) {
         printf(
             "Usage: herescript <executable> <script> [args...]\n"
+            "   or: herescript <script>\n"
             "\n"
             "Herescript is a modern, structured interpreter launcher designed to extend\n"
             "the idiom of starting shebang scripts with #!/usr/bin/env. Instead, scripts begin\n"
@@ -477,6 +500,9 @@ int main(int argc, char **argv) {
             "\n"
             "Here '#! --verbose' adds --verbose as an argument, and '#! ${}' controls\n"
             "exactly where the script filename appears in the argument list.\n"
+            "\n"
+            "When invoked with only a script argument, herescript executes only the #:\n"
+            "header lines and does not invoke a main interpreter.\n"
             "\n"
             "To learn more about the exact syntax go to https://github.com/sfkleach/herescript.\n"
             "It supports:\n"
@@ -491,14 +517,24 @@ int main(int argc, char **argv) {
     init_string_array(&arguments, 16);
     init_binding_array(&bindings, 64);
 
-    // The first argument is the path to the executable to be launched (from the shebang).
-    const char *exec_part = argv[1];
+    // Determine if we have an executable or just a script (no executor mode).
+    bool no_executor_mode = (argc == 2);
+    const char *exec_part = NULL;
+    const char *script_arg = NULL;
+    
+    if (no_executor_mode) {
+        // Mode: herescript <script>
+        script_arg = argv[1];
+    } else {
+        // Mode: herescript <executable> <script> [args...]
+        exec_part = argv[1];
+        script_arg = argv[2];
+    }
     
     // Get script path and resolve to canonical path. Passing NULL as the second
     // argument to realpath causes it to allocate a suitably-sized buffer, avoiding
     // any dependency on PATH_MAX (which POSIX permits implementations to leave
     // undefined when no fixed path-length limit exists).
-    const char *script_arg = argv[2];
     char *resolved_path = realpath(script_arg, NULL);
     if (!resolved_path) {
         perror("herescript: realpath");
@@ -544,58 +580,123 @@ int main(int argc, char **argv) {
         return EXIT_MALFORMED_SHEBANG;
     }
     
-    // Find the first space character after #!
-    const char *space = strchr(line + 2, ' ');
-    if (!space) {
-        fprintf(stderr, "herescript: no executable specified in shebang\n");
-        fprintf(stderr, "  Hint: The shebang must specify an executable after the herescript path.\n");
-        fclose(fp);
-        free(line);
-        return EXIT_MALFORMED_SHEBANG;
+    // In no-executor mode, skip shebang validation and go straight to collecting #: lines.
+    if (!no_executor_mode) {
+        // Find the first space character after #!
+        const char *space = strchr(line + 2, ' ');
+        if (!space) {
+            fprintf(stderr, "herescript: no executable specified in shebang\n");
+            fprintf(stderr, "  Hint: The shebang must specify an executable after the herescript path.\n");
+            fclose(fp);
+            free(line);
+            return EXIT_MALFORMED_SHEBANG;
+        }
+        
+        if (strlen(exec_part) == 0) {
+            fprintf(stderr, "herescript: no executable specified in shebang\n");
+            fprintf(stderr, "  Hint: The shebang must specify an executable after #!/usr/bin/herescript.\n");
+            fclose(fp);
+            free(line);
+            return EXIT_MALFORMED_SHEBANG;
+        }
+        
+        // Check for options (space in executable).
+        if (strchr(exec_part, ' ') || strchr(exec_part, '\t')) {
+            fprintf(stderr, "herescript: shebang contains options, which are not allowed\n");
+            fprintf(stderr, "  Expected: #!/usr/bin/herescript <executable>\n");
+            fprintf(stderr, "  Got: %s\n", line);
+            fprintf(stderr, "  Hint: Options to the executable should be specified in header lines,\n");
+            fprintf(stderr, "        not in the shebang line.\n");
+            fclose(fp);
+            free(line);
+            return EXIT_MALFORMED_SHEBANG;
+        }
+        
+        executable = strdup_safe(exec_part);
     }
     
-    if (strlen(exec_part) == 0) {
-        fprintf(stderr, "herescript: no executable specified in shebang\n");
-        fprintf(stderr, "  Hint: The shebang must specify an executable after #!/usr/bin/herescript.\n");
-        fclose(fp);
-        free(line);
-        return EXIT_MALFORMED_SHEBANG;
+    // Parse #! header lines (only in normal mode with an executable).
+    if (!no_executor_mode) {
+        while ((line_len = getline(&line, &line_cap, fp)) >= 0) {
+            // Remove trailing newline.
+            if (line_len > 0 && line[line_len - 1] == '\n') {
+                line[line_len - 1] = '\0';
+                line_len--;
+            }
+            
+            // Check if this is a #! header line.
+            if (line_len < 2 || line[0] != '#' || line[1] != '!') {
+                break;  // End of #! header block.
+            }
+            
+            process_header_line(line);
+        }
     }
     
-    // Check for options (space in executable).
-    if (strchr(exec_part, ' ') || strchr(exec_part, '\t')) {
-        fprintf(stderr, "herescript: shebang contains options, which are not allowed\n");
-        fprintf(stderr, "  Expected: #!/usr/bin/herescript <executable>\n");
-        fprintf(stderr, "  Got: %s\n", line);
-        fprintf(stderr, "  Hint: Options to the executable should be specified in header lines,\n");
-        fprintf(stderr, "        not in the shebang line.\n");
-        fclose(fp);
-        free(line);
-        return EXIT_MALFORMED_SHEBANG;
-    }
+    // Collect #: lines for header script.
+    StringArray header_script_lines;
+    init_string_array(&header_script_lines, 16);
     
-    executable = strdup_safe(exec_part);
-    free(line);
-    line = NULL;
-    
-    // Parse header lines.
-    while ((line_len = getline(&line, &line_cap, fp)) >= 0) {
-        // Remove trailing newline.
+    // If we have a line and it starts with #:, process it and continue.
+    while (line && line_len >= 0) {
+        // Remove trailing newline if present.
         if (line_len > 0 && line[line_len - 1] == '\n') {
             line[line_len - 1] = '\0';
             line_len--;
         }
         
-        // Check if this is a header line.
-        if (line_len < 2 || line[0] != '#' || line[1] != '!') {
-            break;  // End of header block.
+        // Check if this is a #: header script line.
+        if (line_len >= 2 && line[0] == '#' && line[1] == ':') {
+            // Extract the script content after #:.
+            const char *script_content = line + 2;
+            append_string_array(&header_script_lines, strdup_safe(script_content));
+        } else {
+            // Not a #: line, we're done collecting header script.
+            break;
         }
         
-        process_header_line(line);
+        line_len = getline(&line, &line_cap, fp);
     }
     
     free(line);
     fclose(fp);
+    
+    // If there are header script lines, join them and execute.
+    if (header_script_lines.count > 0) {
+        // Set environment variable $SCRIPT_FILE.
+        setenv("SCRIPT_FILE", script_path, 1);
+        
+        // Build the script string by joining lines with newlines.
+        size_t script_size = 1;  // Start with 1 for null terminator.
+        for (size_t i = 0; i < header_script_lines.count; i++) {
+            script_size += strlen(header_script_lines.items[i]) + 1;  // +1 for newline.
+        }
+        
+        char *full_script = malloc(script_size);
+        if (!full_script) {
+            perror("malloc");
+            return EXIT_GENERAL_ERROR;
+        }
+        
+        size_t pos = 0;
+        for (size_t i = 0; i < header_script_lines.count; i++) {
+            size_t len = strlen(header_script_lines.items[i]);
+            memcpy(full_script + pos, header_script_lines.items[i], len);
+            pos += len;
+            full_script[pos++] = '\n';
+        }
+        full_script[pos] = '\0';
+        
+        // Execute the header script.
+        execute_header_script(full_script);
+        
+        free(full_script);
+    }
+    
+    // In no-executor mode, exit after processing #: lines.
+    if (no_executor_mode) {
+        return 0;
+    }
     
     // Add any command-line arguments passed to herescript (after the script name).
     for (int i = 3; i < argc; i++) {

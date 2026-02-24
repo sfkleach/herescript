@@ -224,3 +224,10 @@ tests:
               "${BUILD_DIR}/test-script.sh"
           ]
       }
+
+  - name: test #:
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: echo "$SCRIPT_FILE"
+    output: |
+      ${BUILD_DIR}/test-herescript
