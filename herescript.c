@@ -332,6 +332,12 @@ static void bytebuf_append_escape(ByteBuf *b, char c) {
 // Step 2c: $'...' enables backslash escape processing inside a single-quoted
 // span. Plain '...' spans remain literal (no escapes). Both forms concatenate
 // with adjacent unquoted or quoted text into a single token.
+// Process a #: arguments line using shell-like tokenisation.
+// Step 2d: ${NAME} outside quotes expands to the value of environment variable
+// NAME. An undefined variable is a fatal error. The expanded text is appended
+// to the current token without further word-splitting (consistent with shell
+// behaviour when expansion occurs inside a word). Bare $ not followed by { or '
+// is treated as a literal character for now; $NAME shorthand is added in Step 6.
 static void process_colon_line(const char *line) {
     // Skip the "#:" prefix.
     const char *p = line + 2;
@@ -364,6 +370,26 @@ static void process_colon_line(const char *line) {
                     bytebuf_free(&buf);
                     exit(EXIT_INVALID_HEADER);
                 }
+            } else if (*p == '$' && *(p + 1) == '{') {
+                // Variable substitution: ${NAME}.
+                p += 2;  // Skip ${.
+                const char *name_start = p;
+                while (*p && *p != '}') p++;
+                if (!*p) {
+                    fprintf(stderr, "herescript: unterminated ${ in #: line\n");
+                    bytebuf_free(&buf);
+                    exit(EXIT_INVALID_HEADER);
+                }
+                size_t name_len = (size_t)(p - name_start);
+                char *name = malloc(name_len + 1);
+                if (!name) { perror("malloc"); exit(EXIT_GENERAL_ERROR); }
+                memcpy(name, name_start, name_len);
+                name[name_len] = '\0';
+                p++;  // Skip }.
+
+                const char *value = getenv_or_fail(name);
+                free(name);
+                for (const char *v = value; *v; v++) bytebuf_append(&buf, *v);
             } else if (*p == '\'') {
                 // Plain single-quoted span: literal, no escapes.
                 p++;  // Skip opening quote.
