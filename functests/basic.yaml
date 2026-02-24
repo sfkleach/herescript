@@ -290,3 +290,30 @@ tests:
               "${BUILD_DIR}/new-style-args-dollar-single-quotes.sh"
           ]
       }
+
+  - name: new-style-args-var-substitution
+    env:
+      GREETING: hello
+      TARGET: world
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: --msg=${GREETING} ${TARGET}
+    output: |
+      {
+          "env": [
+              "GREETING=hello",
+              "TARGET=world"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--msg=hello",
+              "world",
+              "${BUILD_DIR}/new-style-args-var-substitution.sh"
+          ]
+      }
+
+  - name: new-style-args-undefined-variable
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: ${DOES_NOT_EXIST}
+    exit_code: 2
