@@ -1,6 +1,6 @@
-# Herescript coding guidelines
+# Herescript
 
-Herescript is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism.
+`herescript` is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism. 
 
 ## Collaboration Guidelines
 
@@ -13,7 +13,6 @@ When providing technical assistance:
 - **Be direct about problems**: If something is wrong or will cause user confusion, say so clearly
 
 The goal is to build robust, well-designed software, not to avoid technical disagreements.
-
 
 ## Collaboration Guidelines
 
@@ -30,8 +29,6 @@ The goal is to build robust, well-designed software, not to avoid technical disa
   including the use of capitalization and periods.
   - EXCEPT for comments that are simply single words or short phrases
     such as `// TODO: ...` or `// Deprecated` or bullet-points.
-  - OR for comments that introduce a list. The introductory line will typically
-    not be a complete sentence and will finish with `:` or `:-`.
 - Where defensive checks are added, include a comment explaining why they are
   appropriate (not necessary, since defensive checks are not necessary).
 
