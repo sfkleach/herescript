@@ -154,6 +154,33 @@ static void bytebuf_append_escape(ByteBuf *b, char c) {
 // ${HERESCRIPT_FILE}. ${N} for N >= 1 expands to the N-th user-supplied
 // argument (i.e. the arguments passed after the script name on the command
 // line). Out-of-range parameters expand to the empty string.
+// Step 2f: ${A:B} is a parameter slice that expands to B-A separate arguments.
+// A defaults to 0 and B defaults to argc (user_param_count + 1). $@ is a
+// synonym for ${1:}.
+
+// Emit one argument for each parameter in the half-open range [slice_a, slice_b).
+// Parameter 0 is the script path; parameters 1..user_param_count are the
+// user-supplied arguments; parameters beyond that expand to empty strings.
+// Any partially-accumulated content in buf is flushed as a separate argument
+// before the slice elements are emitted.
+static void expand_slice(ByteBuf *buf, int slice_a, int slice_b) {
+    // Flush any partially-built token that precedes the slice.
+    if (buf->len > 0) {
+        append_string_array(&arguments, bytebuf_take(buf));
+    }
+    for (int i = slice_a; i < slice_b; i++) {
+        const char *value;
+        if (i == 0) {
+            value = script_path;
+        } else if (i <= user_param_count) {
+            value = user_params[i - 1];
+        } else {
+            value = "";
+        }
+        append_string_array(&arguments, strdup_safe(value));
+    }
+}
+
 static void process_colon_line(const char *line) {
     // Skip the "#:" prefix.
     const char *p = line + 2;
@@ -166,8 +193,17 @@ static void process_colon_line(const char *line) {
         if (!*p) break;
 
         // Accumulate one token.
+        // has_scalar is true when at least one scalar (non-slice) expression has
+        // contributed to this token. This ensures that a scalar expansion producing
+        // an empty string (e.g. an out-of-range ${N}) still yields an empty-string
+        // argument, while a standalone slice expansion yields nothing extra.
+        bool has_scalar = false;
         while (*p && !isspace((unsigned char)*p)) {
-            if (*p == '$' && *(p + 1) == '\'') {
+            if (*p == '$' && *(p + 1) == '@') {
+                // $@ is a synonym for ${1:} — all user-supplied arguments as separate tokens.
+                p += 2;
+                expand_slice(&buf, 1, user_param_count + 1);
+            } else if (*p == '$' && *(p + 1) == '\'') {
                 // Escape-enabled single-quoted span: $'...'.
                 // Backslash escapes are processed; no interpolation.
                 p += 2;  // Skip $'.
@@ -204,32 +240,56 @@ static void process_colon_line(const char *line) {
                 p++;  // Skip }.
 
                 const char *value;
-                // Check whether the name is a non-negative integer (parameter reference).
-                bool is_numeric = (name_len > 0);
-                for (size_t k = 0; k < name_len && is_numeric; k++) {
-                    if (!isdigit((unsigned char)name[k])) is_numeric = false;
-                }
-                if (is_numeric) {
-                    int param_num = atoi(name);
-                    if (param_num == 0) {
-                        // ${0} is the script path (via realpath), synonymous with ${HERESCRIPT_FILE}.
-                        value = script_path;
-                    } else if (param_num <= user_param_count) {
-                        value = user_params[param_num - 1];
-                    } else {
-                        // Out-of-range parameter expands to an empty string.
-                        value = "";
-                    }
-                } else if (strcmp(name, "HERESCRIPT_FILE") == 0) {
-                    // ${HERESCRIPT_FILE} is a synonym for ${0}. Setting it in the
-                    // environment is deferred to Step 2g; here we resolve it directly
-                    // so it works in #: lines without polluting the process environment.
-                    value = script_path;
+                // Check for slice syntax: the name contains a colon.
+                char *colon = strchr(name, ':');
+                if (colon != NULL) {
+                    // ${A:B} slice: expands to B-A separate arguments.
+                    // A defaults to 0; B defaults to total argc (user_param_count + 1).
+                    int total_argc = user_param_count + 1;
+                    int slice_a = 0;
+                    int slice_b = total_argc;
+                    *colon = '\0';  // Split the name at the colon.
+                    const char *a_str = name;
+                    const char *b_str = colon + 1;
+                    if (*a_str != '\0') slice_a = atoi(a_str);
+                    if (*b_str != '\0') slice_b = atoi(b_str);
+                    // Clamp to valid range.
+                    if (slice_a < 0) slice_a = 0;
+                    if (slice_b > total_argc) slice_b = total_argc;
+                    if (slice_a > slice_b) slice_a = slice_b;
+                    free(name);
+                    expand_slice(&buf, slice_a, slice_b);
+                    // expand_slice does not break the token loop; continue accumulating.
                 } else {
-                    value = getenv_or_fail(name);
+                    // Scalar substitution: ${N} or ${NAME}.
+                    // Check whether the name is a non-negative integer (parameter reference).
+                    bool is_numeric = (name_len > 0);
+                    for (size_t k = 0; k < name_len && is_numeric; k++) {
+                        if (!isdigit((unsigned char)name[k])) is_numeric = false;
+                    }
+                    if (is_numeric) {
+                        int param_num = atoi(name);
+                        if (param_num == 0) {
+                            // ${0} is the script path (via realpath), synonymous with ${HERESCRIPT_FILE}.
+                            value = script_path;
+                        } else if (param_num <= user_param_count) {
+                            value = user_params[param_num - 1];
+                        } else {
+                            // Out-of-range parameter expands to an empty string.
+                            value = "";
+                        }
+                    } else if (strcmp(name, "HERESCRIPT_FILE") == 0) {
+                        // ${HERESCRIPT_FILE} is a synonym for ${0}. Setting it in the
+                        // environment is deferred to Step 2g; here we resolve it directly
+                        // so it works in #: lines without polluting the process environment.
+                        value = script_path;
+                    } else {
+                        value = getenv_or_fail(name);
+                    }
+                    free(name);
+                    has_scalar = true;
+                    for (const char *v = value; *v; v++) bytebuf_append(&buf, *v);
                 }
-                free(name);
-                for (const char *v = value; *v; v++) bytebuf_append(&buf, *v);
             } else if (*p == '\'') {
                 // Plain single-quoted span: literal, no escapes.
                 p++;  // Skip opening quote.
@@ -246,7 +306,12 @@ static void process_colon_line(const char *line) {
             }
         }
 
-        append_string_array(&arguments, bytebuf_take(&buf));
+        // Only flush if there is remaining buffered content. A slice expansion
+        // calls expand_slice which flushes the buffer itself, so after a
+        // standalone slice the buffer will be empty and nothing should be added.
+        if (buf.len > 0 || has_scalar) {
+            append_string_array(&arguments, bytebuf_take(&buf));
+        }
     }
 
     bytebuf_free(&buf);

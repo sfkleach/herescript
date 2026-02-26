@@ -382,3 +382,93 @@ tests:
               "${BUILD_DIR}/new-style-args-herescript-file.sh"
           ]
       }
+
+  - name: new-style-args-slice-all-params
+    args:
+      - alpha
+      - beta
+      - gamma
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: ${1:}
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "alpha",
+              "beta",
+              "gamma"
+          ]
+      }
+
+  - name: new-style-args-slice-from-zero
+    args:
+      - alpha
+      - beta
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: ${0:}
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "${BUILD_DIR}/new-style-args-slice-from-zero.sh",
+              "alpha",
+              "beta"
+          ]
+      }
+
+  - name: new-style-args-slice-range
+    args:
+      - alpha
+      - beta
+      - gamma
+      - delta
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: ${1:3}
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "alpha",
+              "beta"
+          ]
+      }
+
+  - name: new-style-args-slice-dollar-at
+    args:
+      - hello
+      - world
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: $@
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello",
+              "world"
+          ]
+      }
+
+  - name: new-style-args-slice-empty
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: ${1:}
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
