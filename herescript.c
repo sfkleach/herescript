@@ -49,9 +49,10 @@ typedef struct {
 // Global state.
 static StringArray arguments;
 static BindingArray bindings;
-static bool script_name_used = false;
 static char *script_path = NULL;
 static char *executable = NULL;
+static char **user_params = NULL;  // Points into argv at the first user-supplied argument.
+static int user_param_count = 0;   // Number of user-supplied arguments.
 
 // ============================================================================
 // Dynamic Array Utilities
@@ -225,10 +226,8 @@ static char *process_substitution(const char *input) {
             
             const char *value;
             if (name_len == 0) {
-                // ${} expands to script filename.
-                // printf("Debug: Substituting ${} with script path: %s\n", script_path);
+                // ${} expands to script filename (old-style #! lines).
                 value = script_path;
-                script_name_used = true;
             } else {
                 value = getenv_or_fail(name);
             }
@@ -332,12 +331,13 @@ static void bytebuf_append_escape(ByteBuf *b, char c) {
 // Step 2c: $'...' enables backslash escape processing inside a single-quoted
 // span. Plain '...' spans remain literal (no escapes). Both forms concatenate
 // with adjacent unquoted or quoted text into a single token.
-// Process a #: arguments line using shell-like tokenisation.
 // Step 2d: ${NAME} outside quotes expands to the value of environment variable
 // NAME. An undefined variable is a fatal error. The expanded text is appended
-// to the current token without further word-splitting (consistent with shell
-// behaviour when expansion occurs inside a word). Bare $ not followed by { or '
-// is treated as a literal character for now; $NAME shorthand is added in Step 6.
+// to the current token without further word-splitting.
+// Step 2e: ${0} expands to the script path (via realpath), synonymous with
+// ${HERESCRIPT_FILE}. ${N} for N >= 1 expands to the N-th user-supplied
+// argument (i.e. the arguments passed after the script name on the command
+// line). Out-of-range parameters expand to the empty string.
 static void process_colon_line(const char *line) {
     // Skip the "#:" prefix.
     const char *p = line + 2;
@@ -371,7 +371,7 @@ static void process_colon_line(const char *line) {
                     exit(EXIT_INVALID_HEADER);
                 }
             } else if (*p == '$' && *(p + 1) == '{') {
-                // Variable substitution: ${NAME}.
+                // Variable or parameter substitution: ${NAME} or ${N}.
                 p += 2;  // Skip ${.
                 const char *name_start = p;
                 while (*p && *p != '}') p++;
@@ -387,7 +387,31 @@ static void process_colon_line(const char *line) {
                 name[name_len] = '\0';
                 p++;  // Skip }.
 
-                const char *value = getenv_or_fail(name);
+                const char *value;
+                // Check whether the name is a non-negative integer (parameter reference).
+                bool is_numeric = (name_len > 0);
+                for (size_t k = 0; k < name_len && is_numeric; k++) {
+                    if (!isdigit((unsigned char)name[k])) is_numeric = false;
+                }
+                if (is_numeric) {
+                    int param_num = atoi(name);
+                    if (param_num == 0) {
+                        // ${0} is the script path (via realpath), synonymous with ${HERESCRIPT_FILE}.
+                        value = script_path;
+                    } else if (param_num <= user_param_count) {
+                        value = user_params[param_num - 1];
+                    } else {
+                        // Out-of-range parameter expands to an empty string.
+                        value = "";
+                    }
+                } else if (strcmp(name, "HERESCRIPT_FILE") == 0) {
+                    // ${HERESCRIPT_FILE} is a synonym for ${0}. Setting it in the
+                    // environment is deferred to Step 2g; here we resolve it directly
+                    // so it works in #: lines without polluting the process environment.
+                    value = script_path;
+                } else {
+                    value = getenv_or_fail(name);
+                }
                 free(name);
                 for (const char *v = value; *v; v++) bytebuf_append(&buf, *v);
             } else if (*p == '\'') {
@@ -650,7 +674,14 @@ int main(int argc, char **argv) {
         return EXIT_GENERAL_ERROR;
     }
     script_path = resolved_path;
-    
+
+    // Store user-supplied arguments so that ${N} (Step 2e) can expand them.
+    // Note: ${HERESCRIPT_FILE} is set in the environment in Step 2g; for now it
+    // is handled as a special name inside process_colon_line without polluting
+    // the process environment.
+    user_params = (argc > 3) ? &argv[3] : NULL;
+    user_param_count = (argc > 3) ? argc - 3 : 0;
+
     // Open script file.
     FILE *fp = fopen(script_path, "r");
     if (!fp) {
@@ -755,18 +786,7 @@ int main(int argc, char **argv) {
     
     free(line);
     fclose(fp);
-    
-    // Add any command-line arguments passed to herescript (after the script name).
-    for (int i = 3; i < argc; i++) {
-        append_string_array(&arguments, strdup_safe(argv[i]));
-    }
-    
-    // Append script filename if ${} was not used.
-    if (!script_name_used) {
-        // printf("Debug: Appending script path to arguments since ${} was not used.\n");
-        append_string_array(&arguments, strdup_safe(script_path));
-    }
-    
+
     // Build argv[].
     size_t new_argc = 1 + arguments.count;
     char **new_argv = malloc((new_argc + 1) * sizeof(char *));

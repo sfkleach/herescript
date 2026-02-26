@@ -84,6 +84,8 @@ class Main:
         env       (dict, default {}) — environment variables to set when running
                                        the script; useful for testing conditional
                                        bindings such as NAME:=VALUE
+        args      (list, default []) — extra command-line arguments appended after
+                                       the script path, available as ${1}, ${2} etc.
         output    (str, required unless exit_code is set) — expected stdout; if '...',
                                          stdout is not compared (test runs for exit_code only)
         """
@@ -95,6 +97,7 @@ class Main:
         expected_exit_code = None if expected_exit_nonzero else int(_raw_exit_code)
         expected_stderr_raw = test.get("stderr", None)
         extra_env: dict[str, str] = {str(k): str(v) for k, v in (test.get("env") or {}).items()}
+        extra_args: list[str] = [str(a) for a in (test.get("args") or [])]
 
         # Validate that the test specifies at least something to check.
         if expected_raw is None and "exit_code" not in test and not expected_exit_nonzero:
@@ -135,7 +138,7 @@ class Main:
         # in the test's env: field, so that inherited variables do not contaminate
         # the JSON env array that test-herescript prints.
         proc = subprocess.run(
-            [script_path],
+            [script_path] + extra_args,
             capture_output=True,
             text=True,
             env=extra_env,

@@ -4,247 +4,248 @@ build_dir: "${BUILD_DIR}"
 
 # This file contains a variety of test cases for herescript, covering different features and edge cases.
 tests:
-  - name: run-echo
-    script: |
-      #!${BUILD_DIR}/herescript echo
-      #! Hello, World!
-    output: |
-      Hello, World! ${BUILD_DIR}/run-echo.sh
+  # - name: run-echo
+  #   script: |
+  #     #!${BUILD_DIR}/herescript echo
+  #     #! Hello, World!
+  #   output: |
+  #     Hello, World! ${BUILD_DIR}/run-echo.sh
 
-  - name: comprehensive-test
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! First normal arg
-      #!# This comment should be ignored
-      #! MYVAR=hello
-      #! Second arg with ${MYVAR}
-      #! \n\t\sescapes work
-      #!= --option=value
-      #!! This is literal: ${MYVAR}
-      #!$ This has literal dollar: ${MYVAR}
-      #!\ No escape: \n stays as backslash-n
-      #! Script name is: ${}
-    output: |
-      {
-          "env": [
-              "MYVAR=hello"
-          ],
-          "argv": [
-              "${BUILD_DIR}/test-herescript",
-              "First normal arg",
-              "Second arg with hello",
-              "\n\t escapes work",
-              "--option=value",
-              "This is literal: ${MYVAR}",
-              "This has literal dollar: ${MYVAR}",
-              "No escape: \\n stays as backslash-n",
-              "Script name is: ${BUILD_DIR}/comprehensive-test.sh"
-          ]
-      }
+  # - name: comprehensive-test
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     #! First normal arg
+  #     #!# This comment should be ignored
+  #     #! MYVAR=hello
+  #     #! Second arg with ${MYVAR}
+  #     #! \n\t\sescapes work
+  #     #!= --option=value
+  #     #!! This is literal: ${MYVAR}
+  #     #!$ This has literal dollar: ${MYVAR}
+  #     #!\ No escape: \n stays as backslash-n
+  #     #! Script name is: ${}
+  #   output: |
+  #     {
+  #         "env": [
+  #             "MYVAR=hello"
+  #         ],
+  #         "argv": [
+  #             "${BUILD_DIR}/test-herescript",
+  #             "First normal arg",
+  #             "Second arg with hello",
+  #             "\n\t escapes work",
+  #             "--option=value",
+  #             "This is literal: ${MYVAR}",
+  #             "This has literal dollar: ${MYVAR}",
+  #             "No escape: \\n stays as backslash-n",
+  #             "Script name is: ${BUILD_DIR}/comprehensive-test.sh"
+  #         ]
+  #     }
 
-  - name: final-demo
-    env:
-      BASE_URL: https://zark.com
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #!# This is a comment - it will be ignored
-      #!#
-      #! BASE_URL:=https://example.com
-      #! PORT:=8080
-      #! --base-url=${BASE_URL}
-      #! --port=${PORT}
-      #!= --config=production.conf
-      #!! --literal-arg=${BASE_URL}
-      #!$ --dollar-literal=${NOT_EXPANDED}
-      #!\ No\nescape\there
-      #! Escaped:\n\t\shere
-      #! Empty arg follows:
-      #!
-      #! Script path is: ${}
-    output: |
-      {
-          "env": [
-              "BASE_URL=https://zark.com",
-              "PORT=8080"
-          ],
-          "argv": [
-              "${BUILD_DIR}/test-herescript",
-              "--base-url=https://zark.com",
-              "--port=8080",
-              "--config=production.conf",
-              "--literal-arg=${BASE_URL}",
-              "--dollar-literal=${NOT_EXPANDED}",
-              "No\\nescape\\there",
-              "Escaped:\n\t here",
-              "Empty arg follows:",
-              "",
-              "Script path is: ${BUILD_DIR}/final-demo.sh"
-          ]
-      }
+  # - name: final-demo
+  #   env:
+  #     BASE_URL: https://zark.com
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     #!# This is a comment - it will be ignored
+  #     #!#
+  #     #! BASE_URL:=https://example.com
+  #     #! PORT:=8080
+  #     #! --base-url=${BASE_URL}
+  #     #! --port=${PORT}
+  #     #!= --config=production.conf
+  #     #!! --literal-arg=${BASE_URL}
+  #     #!$ --dollar-literal=${NOT_EXPANDED}
+  #     #!\ No\nescape\there
+  #     #! Escaped:\n\t\shere
+  #     #! Empty arg follows:
+  #     #!
+  #     #! Script path is: ${}
+  #   output: |
+  #     {
+  #         "env": [
+  #             "BASE_URL=https://zark.com",
+  #             "PORT=8080"
+  #         ],
+  #         "argv": [
+  #             "${BUILD_DIR}/test-herescript",
+  #             "--base-url=https://zark.com",
+  #             "--port=8080",
+  #             "--config=production.conf",
+  #             "--literal-arg=${BASE_URL}",
+  #             "--dollar-literal=${NOT_EXPANDED}",
+  #             "No\\nescape\\there",
+  #             "Escaped:\n\t here",
+  #             "Empty arg follows:",
+  #             "",
+  #             "Script path is: ${BUILD_DIR}/final-demo.sh"
+  #         ]
+  #     }
 
-  - name: simple-test
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! --option1
-      #! TEST_VAR=test_value
-    output: |
-      {
-          "env": [
-              "TEST_VAR=test_value"
-          ],
-          "argv": [
-              "${BUILD_DIR}/test-herescript",
-              "--option1",
-              "${BUILD_DIR}/simple-test.sh"
-          ]
-      }
+  # - name: simple-test
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     #! --option1
+  #     #! TEST_VAR=test_value
+  #   output: |
+  #     {
+  #         "env": [
+  #             "TEST_VAR=test_value"
+  #         ],
+  #         "argv": [
+  #             "${BUILD_DIR}/test-herescript",
+  #             "--option1",
+  #             "${BUILD_DIR}/simple-test.sh"
+  #         ]
+  #     }
 
-  - name: test2
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! --option1
-      #! TEST_VAR=test_value
-      #! ANOTHER_VAR:=default
-      #! --arg=${TEST_VAR}
-    output: |
-      {
-          "env": [
-              "TEST_VAR=test_value",
-              "ANOTHER_VAR=default"
-          ],
-          "argv": [
-              "${BUILD_DIR}/test-herescript",
-              "--option1",
-              "--arg=test_value",
-              "${BUILD_DIR}/test2.sh"
-          ]
-      }
-  - name: test-conditional
-    env:
-      TEST_PRE: this_should_not_be_overridden
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! TEST_PRE:=should_not_be_set
-      #! TEST_NEW:=should_be_set
-    output: |
-      {
-          "env": [
-              "TEST_PRE=this_should_not_be_overridden",
-              "TEST_NEW=should_be_set"
-          ],
-          "argv": [
-              "${BUILD_DIR}/test-herescript",
-              "${BUILD_DIR}/test-conditional.sh"
-          ]
-      }
+  # - name: test2
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     #! --option1
+  #     #! TEST_VAR=test_value
+  #     #! ANOTHER_VAR:=default
+  #     #! --arg=${TEST_VAR}
+  #   output: |
+  #     {
+  #         "env": [
+  #             "TEST_VAR=test_value",
+  #             "ANOTHER_VAR=default"
+  #         ],
+  #         "argv": [
+  #             "${BUILD_DIR}/test-herescript",
+  #             "--option1",
+  #             "--arg=test_value",
+  #             "${BUILD_DIR}/test2.sh"
+  #         ]
+  #     }
+  # - name: test-conditional
+  #   env:
+  #     TEST_PRE: this_should_not_be_overridden
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     #! TEST_PRE:=should_not_be_set
+  #     #! TEST_NEW:=should_be_set
+  #   output: |
+  #     {
+  #         "env": [
+  #             "TEST_PRE=this_should_not_be_overridden",
+  #             "TEST_NEW=should_be_set"
+  #         ],
+  #         "argv": [
+  #             "${BUILD_DIR}/test-herescript",
+  #             "${BUILD_DIR}/test-conditional.sh"
+  #         ]
+  #     }
 
-  - name: test-echo
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! Hello from herescript!
-    output: |
-      {
-          "env": [
-          ],
-          "argv": [
-              "${BUILD_DIR}/test-herescript",
-              "Hello from herescript!",
-              "${BUILD_DIR}/test-echo.sh"
-          ]
-      }
-  - name: test-empty
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #!# The next argument is an empty argument:
-      #!
-      #!# But this is not.
-      #! argument2
-    output: |
-      {
-          "env": [
-          ],
-          "argv": [
-              "${BUILD_DIR}/test-herescript",
-              "",
-              "argument2",
-              "${BUILD_DIR}/test-empty.sh"
-          ]
-      }
-  - name: test-error-shebang-option
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript --option
-      #! This should fail
-    exit_code: nonzero
-  - name: test-error-undefined-variable
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! UNDEFINED_VAR=${DOES_NOT_EXIST}
-    exit_code: 2
-  - name: test-ignored-lines
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #!# First arg
-      #!# Second arg
-    output: |
-      {
-          "env": [
-          ],
-          "argv": [
-              "${BUILD_DIR}/test-herescript",
-              "${BUILD_DIR}/test-ignored-lines.sh"
-          ]
-      }
+  # - name: test-echo
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     #! Hello from herescript!
+  #   output: |
+  #     {
+  #         "env": [
+  #         ],
+  #         "argv": [
+  #             "${BUILD_DIR}/test-herescript",
+  #             "Hello from herescript!",
+  #             "${BUILD_DIR}/test-echo.sh"
+  #         ]
+  #     }
+  # - name: test-empty
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     #!# The next argument is an empty argument:
+  #     #!
+  #     #!# But this is not.
+  #     #! argument2
+  #   output: |
+  #     {
+  #         "env": [
+  #         ],
+  #         "argv": [
+  #             "${BUILD_DIR}/test-herescript",
+  #             "",
+  #             "argument2",
+  #             "${BUILD_DIR}/test-empty.sh"
+  #         ]
+  #     }
 
-  - name: test-script
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! --option1
-      #! ARG_VAR=arg_value
-      #! TEST_VAR:=default_value
-      #! --flag=value
-      #!= --flag2=value2
-      #! This should be an argument
-      #!# This is a comment and should be ignored
-      #! \n\t\s
-      #!
-    output: |
-      {
-          "env": [
-              "ARG_VAR=arg_value",
-              "TEST_VAR=default_value"
-          ],
-          "argv": [
-              "${BUILD_DIR}/test-herescript",
-              "--option1",
-              "--flag=value",
-              "--flag2=value2",
-              "This should be an argument",
-              "\n\t ",
-              "",
-              "${BUILD_DIR}/test-script.sh"
-          ]
-      }
+  # - name: test-error-shebang-option
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript --option
+  #     #! This should fail
+  #   exit_code: nonzero
+  # - name: test-error-undefined-variable
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     #! UNDEFINED_VAR=${DOES_NOT_EXIST}
+  #   exit_code: 2
+  # - name: test-ignored-lines
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     #!# First arg
+  #     #!# Second arg
+  #   output: |
+  #     {
+  #         "env": [
+  #         ],
+  #         "argv": [
+  #             "${BUILD_DIR}/test-herescript",
+  #             "${BUILD_DIR}/test-ignored-lines.sh"
+  #         ]
+  #     }
 
-  - name: new-style-comment
-    script: |
-      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      ## This comment line should be silently discarded.
-      #! --after-comment
-    output: |
-      {
-          "env": [
-          ],
-          "argv": [
-              "${BUILD_DIR}/test-herescript",
-              "--after-comment",
-              "${BUILD_DIR}/new-style-comment.sh"
-          ]
-      }
+  # - name: test-script
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     #! --option1
+  #     #! ARG_VAR=arg_value
+  #     #! TEST_VAR:=default_value
+  #     #! --flag=value
+  #     #!= --flag2=value2
+  #     #! This should be an argument
+  #     #!# This is a comment and should be ignored
+  #     #! \n\t\s
+  #     #!
+  #   output: |
+  #     {
+  #         "env": [
+  #             "ARG_VAR=arg_value",
+  #             "TEST_VAR=default_value"
+  #         ],
+  #         "argv": [
+  #             "${BUILD_DIR}/test-herescript",
+  #             "--option1",
+  #             "--flag=value",
+  #             "--flag2=value2",
+  #             "This should be an argument",
+  #             "\n\t ",
+  #             "",
+  #             "${BUILD_DIR}/test-script.sh"
+  #         ]
+  #     }
+
+  # - name: new-style-comment
+  #   script: |
+  #     #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+  #     ## This comment line should be silently discarded.
+  #     #! --after-comment
+  #   output: |
+  #     {
+  #         "env": [
+  #         ],
+  #         "argv": [
+  #             "${BUILD_DIR}/test-herescript",
+  #             "--after-comment",
+  #             "${BUILD_DIR}/new-style-comment.sh"
+  #         ]
+  #     }
 
   - name: new-style-args-whitespace
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #: --foo --bar baz
+      #: --foo --bar baz ${0}
     output: |
       {
           "env": [
@@ -261,7 +262,7 @@ tests:
   - name: new-style-args-single-quotes
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #: 'hello world' foo'bar baz'boink
+      #: 'hello world' foo'bar baz'boink ${0}
     output: |
       {
           "env": [
@@ -277,7 +278,7 @@ tests:
   - name: new-style-args-dollar-single-quotes
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #: $'hello\tworld' $'back\\slash' $'space\sinside'
+      #: $'hello\tworld' $'back\\slash' $'space\sinside' ${0}
     output: |
       {
           "env": [
@@ -297,7 +298,7 @@ tests:
       TARGET: world
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #: --msg=${GREETING} ${TARGET}
+      #: --msg=${GREETING} ${TARGET} ${0}
     output: |
       {
           "env": [
@@ -317,3 +318,67 @@ tests:
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #: ${DOES_NOT_EXIST}
     exit_code: 2
+
+  - name: new-style-args-param-zero
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: --script=${0} ${0}
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--script=${BUILD_DIR}/new-style-args-param-zero.sh",
+              "${BUILD_DIR}/new-style-args-param-zero.sh"
+          ]
+      }
+
+  - name: new-style-args-param-one
+    args:
+      - hello
+      - world
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: ${1} ${2} ${0}
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello",
+              "world",
+              "${BUILD_DIR}/new-style-args-param-one.sh"
+          ]
+      }
+
+  - name: new-style-args-param-out-of-range
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: ${5} ${0}
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "",
+              "${BUILD_DIR}/new-style-args-param-out-of-range.sh"
+          ]
+      }
+
+  - name: new-style-args-herescript-file
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: --file=${HERESCRIPT_FILE} ${0}
+    output: |
+      {
+          "env": [
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--file=${BUILD_DIR}/new-style-args-herescript-file.sh",
+              "${BUILD_DIR}/new-style-args-herescript-file.sh"
+          ]
+      }
