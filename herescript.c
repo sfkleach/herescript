@@ -204,7 +204,7 @@ static void run_state_bind_herescript_file(RunState *rs) {
     }
 }
 
-static void flush_token(RunState *rs, MaybeToken *buf) {
+static void run_state_flush_maybe_token(RunState *rs, MaybeToken *buf) {
     // Flush any partially-built token that precedes the slice.
     if (buf->is_token) {
         append_string_array(&rs->arguments, maybe_token_take(buf));
@@ -217,7 +217,7 @@ static void flush_token(RunState *rs, MaybeToken *buf) {
 // Any partially-accumulated content in buf is flushed as a separate argument
 // before the slice elements are emitted.
 static void expand_slice(RunState *rs, MaybeToken *buf, int slice_a, int slice_b) {
-    flush_token(rs, buf);
+    run_state_flush_maybe_token(rs, buf);
     for (int i = slice_a; i < slice_b; i++) {
         const char *value;
         if (i == 0) {
@@ -355,7 +355,7 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
 // Process a #: arguments line using shell-like tokenisation. Tokens are
 // separated by whitespace; quoting and substitution forms are dispatched to
 // dedicated helpers. Steps 2a–2f are handled here collectively.
-static void process_colon_line(RunState *rs, const char *line) {
+static void run_state_process_colon_line(RunState *rs, const char *line) {
     const char *cursor = line + 2;  // Skip the "#:" prefix.
     MaybeToken buf;
     maybe_token_init(&buf, 64);
@@ -388,7 +388,7 @@ static void process_colon_line(RunState *rs, const char *line) {
 
         // Flush any remaining content as a token. Slice expansions flush the
         // buffer themselves, so a standalone slice leaves nothing to flush here.
-        flush_token(rs, &buf);
+        run_state_flush_maybe_token(rs, &buf);
     }
 
     maybe_token_free(&buf);
@@ -547,7 +547,7 @@ int main(int argc, char **argv) {
                 // Comment line, skip.
                 continue;
             case ':':
-                process_colon_line(&rs, line);
+                run_state_process_colon_line(&rs, line);
                 break;
             case '|':
             default:
