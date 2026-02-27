@@ -16,25 +16,20 @@ extern char **environ;
 #define EXIT_INVALID_HEADER 4
 #define EXIT_EXEC_FAILURE 5
 
+
+
+
+
+// ============================================================================
+// Dynamic Array Utilities
+// ============================================================================
+
 // Dynamic array for strings.
 typedef struct {
     char **items;
     size_t count;
     size_t capacity;
 } StringArray;
-
-// All mutable state for a single herescript invocation.
-typedef struct {
-    StringArray  arguments;
-    char        *script_path;      // Resolved (realpath) path to the script file.
-    char        *executable;       // The interpreter to exec.
-    char       **user_params;      // Points into argv at the first user-supplied argument.
-    int          user_param_count; // Number of user-supplied arguments.
-} RunState;
-
-// ============================================================================
-// Dynamic Array Utilities
-// ============================================================================
 
 static void init_string_array(StringArray *arr, size_t initial_capacity) {
     arr->items = malloc(initial_capacity * sizeof(char *));
@@ -57,6 +52,13 @@ static void append_string_array(StringArray *arr, char *str) {
     }
     arr->items[arr->count++] = str;
 }
+
+// Returns the internal array of strings. The returned object is owned by the 
+// StringArray and should not be freed directly.
+static char **string_array_borrow_data(StringArray *arr) {
+    return arr->items;
+}
+
 
 // ============================================================================
 // String Utilities
@@ -187,6 +189,15 @@ static void maybe_token_is_token(MaybeToken *b) {
 // RunState
 // ============================================================================
 
+// All mutable state for a single herescript invocation.
+typedef struct {
+    StringArray  arguments;
+    char        *script_path;      // Resolved (realpath) path to the script file.
+    char        *executable;       // The interpreter to exec.
+    char       **user_params;      // Points into argv at the first user-supplied argument.
+    int          user_param_count; // Number of user-supplied arguments.
+} RunState;
+
 static void run_state_init(RunState *rs) {
     init_string_array(&rs->arguments, 16);
     rs->script_path = NULL;
@@ -214,11 +225,11 @@ static int run_state_exec(RunState *rs) {
     for (size_t i = 0; i < rs->arguments.count; i++) {
         append_string_array(&argv_arr, rs->arguments.items[i]);
     }
-    argv_arr.items[argv_arr.count] = NULL;
+    append_string_array(&argv_arr, NULL);  // NULL sentinel required by execve/execvp.
     if (strchr(rs->executable, '/')) {
-        execve(rs->executable, argv_arr.items, environ);
+        execve(rs->executable, string_array_borrow_data(&argv_arr), environ);
     } else {
-        execvp(rs->executable, argv_arr.items);
+        execvp(rs->executable, string_array_borrow_data(&argv_arr));
     }
     // If we reach here, exec failed.
     perror("herescript: exec");
@@ -581,7 +592,7 @@ int main(int argc, char **argv) {
     fclose(fp);
 
     // All memory allocated during this process — arguments, bindings,
-    // script_path, executable, new_argv — is intentionally left unfreed. On a
+    // script_path, executable — is intentionally left unfreed. On a
     // successful exec the kernel replaces the process image entirely, so the
     // allocations simply cease to exist. On an error return main() exits
     // immediately afterward and the OS reclaims everything. There is no code
