@@ -194,6 +194,24 @@ static void expand_slice(RunState *rs, MaybeToken *buf, int slice_a, int slice_b
     }
 }
 
+// Parse and expand a slice notation string of the form A:B (already extracted
+// from ${A:B}, with the colon guaranteed present). A defaults to 0; B defaults
+// to total argc. Both bounds are clamped to the valid range. Does not free name.
+static void expand_slice_notation(RunState *rs, MaybeToken *buf, char *name) {
+    int total_argc = rs->user_param_count + 1;
+    int slice_a = 0;
+    int slice_b = total_argc;
+    char *colon = strchr(name, ':');
+    *colon = '\0';  // Split the name at the colon.
+    if (*name        != '\0') slice_a = atoi(name);
+    if (*(colon + 1) != '\0') slice_b = atoi(colon + 1);
+    // Clamp to valid range.
+    if (slice_a < 0)          slice_a = 0;
+    if (slice_b > total_argc) slice_b = total_argc;
+    if (slice_a > slice_b)    slice_a = slice_b;
+    expand_slice(rs, buf, slice_a, slice_b);
+}
+
 // Parse a $'...' escape-quoted span. Called after consuming the $' prefix.
 // Backslash escapes are processed; there is no variable interpolation.
 // Advances *p past the closing single quote.
@@ -246,20 +264,7 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
 
     char *colon = strchr(name, ':');
     if (colon != NULL) {
-        // ${A:B} slice: expands to B-A separate arguments.
-        // A defaults to 0; B defaults to total argc (user_param_count + 1).
-        int total_argc = rs->user_param_count + 1;
-        int slice_a = 0;
-        int slice_b = total_argc;
-        *colon = '\0';  // Split the name at the colon.
-        if (*name    != '\0') slice_a = atoi(name);
-        if (*(colon + 1) != '\0') slice_b = atoi(colon + 1);
-        // Clamp to valid range.
-        if (slice_a < 0) slice_a = 0;
-        if (slice_b > total_argc) slice_b = total_argc;
-        if (slice_a > slice_b) slice_a = slice_b;
-        free(name);
-        expand_slice(rs, buf, slice_a, slice_b);
+        expand_slice_notation(rs, buf, name);
     } else {
         // Scalar substitution: ${N} for a positional parameter, or ${NAME} for an env var.
         // Check whether the name is a non-negative integer (parameter reference).
@@ -287,10 +292,10 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
         } else {
             value = getenv_or_fail(name);
         }
-        free(name);
         maybe_token_is_token(buf);
         for (const char *v = value; *v; v++) maybe_token_append(buf, *v);
     }
+    free(name);
 }
 
 // Process a #: arguments line using shell-like tokenisation. Tokens are
