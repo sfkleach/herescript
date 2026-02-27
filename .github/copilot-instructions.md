@@ -54,7 +54,9 @@ For projects we own, including this one, we adopt the following single, uniform,
 
 - We use 1TBS ("one true brace style") brace placement.
 - Braces are mandatory for the bodies of `if`, `else`, `for`, `while`, and `switch` statements,
-  with no exceptions.
+  with one exception: `if (condition) break;`, `if (condition) continue;`, and
+  `if (condition) return ...;` are written on a single line without braces.
+  These are treated as conditional exits rather than conditional branches.
 - The body of a control-flow statement is always on its own line; it is never placed on the
   same line as the opening `{`.
 - Switch `case` labels have their body on the next line, not on the same line as the `case`.
