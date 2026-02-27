@@ -249,6 +249,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-whitespace.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -266,6 +267,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-single-quotes.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -282,6 +284,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-dollar-single-quotes.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -303,7 +306,8 @@ tests:
       {
           "env": [
               "GREETING=hello",
-              "TARGET=world"
+              "TARGET=world",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-var-substitution.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -326,6 +330,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-param-zero.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -344,6 +349,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-param-one.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -360,6 +366,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-param-out-of-range.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -375,6 +382,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-herescript-file.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -394,6 +402,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-all-params.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -413,6 +422,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-from-zero.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -434,6 +444,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-range.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -452,6 +463,7 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-dollar-at.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -467,8 +479,29 @@ tests:
     output: |
       {
           "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-empty.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: new-style-args-colon-expansion
+    args:
+      - foo
+      - bar
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: ${:}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-colon-expansion.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "${BUILD_DIR}/new-style-args-colon-expansion.sh",
+              "foo",
+              "bar"
           ]
       }
