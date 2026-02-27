@@ -109,7 +109,10 @@ typedef struct {
 static void maybe_token_init(MaybeToken *b, size_t initial_cap) {
     b->is_token = false;
     b->data = malloc(initial_cap);
-    if (!b->data) { perror("malloc"); exit(EXIT_GENERAL_ERROR); }
+    if (!b->data) {
+        perror("malloc");
+        exit(EXIT_GENERAL_ERROR);
+    }
     b->len = 0;
     b->cap = initial_cap;
 }
@@ -118,7 +121,10 @@ static void maybe_token_append(MaybeToken *b, char c) {
     if (b->len + 1 >= b->cap) {
         b->cap *= 2;
         b->data = realloc(b->data, b->cap);
-        if (!b->data) { perror("realloc"); exit(EXIT_GENERAL_ERROR); }
+        if (!b->data) {
+            perror("realloc");
+            exit(EXIT_GENERAL_ERROR);
+        }
     }
     b->data[b->len++] = c;
     b->is_token = true;
@@ -144,13 +150,27 @@ static void maybe_token_free(MaybeToken *b) {
 static void maybe_token_append_escape(MaybeToken *b, char c) {
     b->is_token = true;
     switch (c) {
-        case '\\': maybe_token_append(b, '\\'); break;
-        case '\'': maybe_token_append(b, '\''); break;
-        case '"':  maybe_token_append(b, '"');  break;
-        case 's':  maybe_token_append(b, ' ');  break;
-        case 'n':  maybe_token_append(b, '\n'); break;
-        case 't':  maybe_token_append(b, '\t'); break;
-        case 'r':  maybe_token_append(b, '\r'); break;
+        case '\\':
+            maybe_token_append(b, '\\');
+            break;
+        case '\'':
+            maybe_token_append(b, '\'');
+            break;
+        case '"':
+            maybe_token_append(b, '"');
+            break;
+        case 's':
+            maybe_token_append(b, ' ');
+            break;
+        case 'n':
+            maybe_token_append(b, '\n');
+            break;
+        case 't':
+            maybe_token_append(b, '\t');
+            break;
+        case 'r':
+            maybe_token_append(b, '\r');
+            break;
         default:
             maybe_token_append(b, '\\');
             maybe_token_append(b, c);
@@ -203,12 +223,22 @@ static void expand_slice_notation(RunState *rs, MaybeToken *buf, char *name) {
     int slice_b = total_argc;
     char *colon = strchr(name, ':');
     *colon = '\0';  // Split the name at the colon.
-    if (*name        != '\0') slice_a = atoi(name);
-    if (*(colon + 1) != '\0') slice_b = atoi(colon + 1);
+    if (*name        != '\0') {
+        slice_a = atoi(name);
+    }
+    if (*(colon + 1) != '\0') {
+        slice_b = atoi(colon + 1);
+    }
     // Clamp to valid range.
-    if (slice_a < 0)          slice_a = 0;
-    if (slice_b > total_argc) slice_b = total_argc;
-    if (slice_a > slice_b)    slice_a = slice_b;
+    if (slice_a < 0) {
+        slice_a = 0;
+    }
+    if (slice_b > total_argc) {
+        slice_b = total_argc;
+    }
+    if (slice_a > slice_b) {
+        slice_a = slice_b;
+    }
     expand_slice(rs, buf, slice_a, slice_b);
 }
 
@@ -272,7 +302,9 @@ static void scan_dollar_single_quote(MaybeToken *b, const char **cursor) {
 // No escapes or substitutions are performed; content is appended literally.
 // Advances *p past the closing single quote.
 static void scan_single_quote(MaybeToken *b, const char **cursor) {
-    while (**cursor && **cursor != '\'') maybe_token_append(b, *(*cursor)++);
+    while (**cursor && **cursor != '\'') {
+        maybe_token_append(b, *(*cursor)++);
+    }
     if (**cursor == '\'') {
         (*cursor)++;  // Skip closing quote.
     } else {
@@ -287,7 +319,9 @@ static void scan_single_quote(MaybeToken *b, const char **cursor) {
 // Advances *p past the closing brace.
 static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **cursor) {
     const char *name_start = *cursor;
-    while (**cursor && **cursor != '}') (*cursor)++;
+    while (**cursor && **cursor != '}') {
+        (*cursor)++;
+    }
     if (!**cursor) {
         fprintf(stderr, "herescript: unterminated ${ in #: line\n");
         maybe_token_free(buf);
@@ -315,7 +349,9 @@ static void process_colon_line(RunState *rs, const char *line) {
 
     while (*cursor) {
         // Skip inter-token whitespace.
-        while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+        while (*cursor && isspace((unsigned char)*cursor)) {
+            cursor++;
+        }
         if (!*cursor) break;
 
         // Accumulate one token, dispatching on the leading character(s).

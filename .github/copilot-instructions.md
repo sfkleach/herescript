@@ -50,6 +50,15 @@ For projects we own, including this one, we adopt the following single, uniform,
 - Use 4 spaces per indentation level EXCEPT when working in YAML/JSON files where 2 spaces per indentation level is more practical owning to higher nesting levels.
 - UTF-8 encoding should be used for all text files EXCEPT when working with compilers/interpreters that do not support UTF-8.
 
+## C-specific Style Guidelines
+
+- We use 1TBS ("one true brace style") brace placement.
+- Braces are mandatory for the bodies of `if`, `else`, `for`, `while`, and `switch` statements,
+  with no exceptions.
+- The body of a control-flow statement is always on its own line; it is never placed on the
+  same line as the opening `{`.
+- Switch `case` labels have their body on the next line, not on the same line as the `case`.
+
 ## Developer documentation guidelines
 
 - Use Unix-style paths (forward slashes) in code and documentation, even on Windows.
