@@ -212,6 +212,41 @@ static void expand_slice_notation(RunState *rs, MaybeToken *buf, char *name) {
     expand_slice(rs, buf, slice_a, slice_b);
 }
 
+// Resolve and append a scalar ${NAME} or ${N} substitution to buf. Numeric names
+// are treated as positional parameters; ${HERESCRIPT_FILE} is a synonym for ${0};
+// all other names are looked up in the environment (fatal if unset).
+static void expand_scalar_name(RunState *rs, MaybeToken *buf, const char *name) {
+    size_t name_len = strlen(name);
+    bool is_numeric = (name_len > 0);
+    for (size_t k = 0; k < name_len && is_numeric; k++) {
+        if (!isdigit((unsigned char)name[k])) is_numeric = false;
+    }
+    const char *value;
+    if (is_numeric) {
+        int param_num = atoi(name);
+        if (param_num == 0) {
+            // ${0} is the script path (via realpath), synonymous with ${HERESCRIPT_FILE}.
+            value = rs->script_path;
+        } else if (param_num <= rs->user_param_count) {
+            value = rs->user_params[param_num - 1];
+        } else {
+            // Out-of-range parameter expands to the empty string.
+            value = "";
+        }
+    } else if (strcmp(name, "HERESCRIPT_FILE") == 0) {
+        // ${HERESCRIPT_FILE} is a synonym for ${0}. Setting it in the environment
+        // is deferred to Step 2g; here we resolve it directly so it works in #:
+        // lines without polluting the process environment.
+        value = rs->script_path;
+    } else {
+        value = getenv_or_fail(name);
+    }
+    maybe_token_is_token(buf);
+    for (const char *v = value; *v; v++) {
+        maybe_token_append(buf, *v);
+    }
+}
+
 // Parse a $'...' escape-quoted span. Called after consuming the $' prefix.
 // Backslash escapes are processed; there is no variable interpolation.
 // Advances *p past the closing single quote.
@@ -259,41 +294,13 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
         exit(EXIT_INVALID_HEADER);
     }
     char *name = strndup_safe(name_start, (size_t)(*cursor - name_start));
-    size_t name_len = strlen(name);
     (*cursor)++;  // Skip }.
 
     char *colon = strchr(name, ':');
     if (colon != NULL) {
         expand_slice_notation(rs, buf, name);
     } else {
-        // Scalar substitution: ${N} for a positional parameter, or ${NAME} for an env var.
-        // Check whether the name is a non-negative integer (parameter reference).
-        bool is_numeric = (name_len > 0);
-        for (size_t k = 0; k < name_len && is_numeric; k++) {
-            if (!isdigit((unsigned char)name[k])) is_numeric = false;
-        }
-        const char *value;
-        if (is_numeric) {
-            int param_num = atoi(name);
-            if (param_num == 0) {
-                // ${0} is the script path (via realpath), synonymous with ${HERESCRIPT_FILE}.
-                value = rs->script_path;
-            } else if (param_num <= rs->user_param_count) {
-                value = rs->user_params[param_num - 1];
-            } else {
-                // Out-of-range parameter expands to the empty string.
-                value = "";
-            }
-        } else if (strcmp(name, "HERESCRIPT_FILE") == 0) {
-            // ${HERESCRIPT_FILE} is a synonym for ${0}. Setting it in the environment
-            // is deferred to Step 2g; here we resolve it directly so it works in #:
-            // lines without polluting the process environment.
-            value = rs->script_path;
-        } else {
-            value = getenv_or_fail(name);
-        }
-        maybe_token_is_token(buf);
-        for (const char *v = value; *v; v++) maybe_token_append(buf, *v);
+        expand_scalar_name(rs, buf, name);
     }
     free(name);
 }
