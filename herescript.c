@@ -527,14 +527,10 @@ int main(int argc, char **argv) {
     free(line);
     line = NULL;
     
-    // Parse header lines.
+    // Parse header lines. Trailing newlines are not stripped here; the header
+    // type checks use line[0]/line[1] directly, and process_colon_line's
+    // whitespace tokeniser discards any trailing newline as inter-token space.
     while ((line_len = getline(&line, &line_cap, fp)) >= 0) {
-        // Remove trailing newline.
-        if (line_len > 0 && line[line_len - 1] == '\n') {
-            line[line_len - 1] = '\0';
-            line_len--;
-        }
-        
         // Check if this is a header line.
         if (line_len < 2 || line[0] != '#') {
             break;  // End of header block.
