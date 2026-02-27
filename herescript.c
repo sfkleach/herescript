@@ -531,24 +531,20 @@ int main(int argc, char **argv) {
     // type checks use line[0]/line[1] directly, and process_colon_line's
     // whitespace tokeniser discards any trailing newline as inter-token space.
     while ((line_len = getline(&line, &line_cap, fp)) >= 0) {
-        // Check if this is a header line.
-        if (line_len < 2 || line[0] != '#') {
-            break;  // End of header block.
-        }
-        
-        if (line[1] == '#') {
-            // New-style comment line: discard.
-            continue;
-        }
+        // Check if this is a header line? If not, we're done parsing headers and can move on to execution. 
+        if (line_len < 2 || line[0] != '#') break;
 
-        if (line[1] == ':') {
-            // New-style arguments line: shell-like tokenisation.
-            process_colon_line(&rs, line);
-            continue;
+        switch (line[1]) {
+            case '#':
+                // Comment line, skip.
+                continue;
+            case ':':
+                process_colon_line(&rs, line);
+                break;
+            case '|':
+            default:
+                break;
         }
-        
-        // Any other line (including old-style #! continuation lines) ends the header block.
-        break;
     }
     
     free(line);
