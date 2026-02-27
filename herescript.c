@@ -195,6 +195,15 @@ static void run_state_init(RunState *rs) {
     rs->user_param_count = 0;
 }
 
+// Bind HERESCRIPT_FILE in the process environment so that the subprocess
+// inherits it and #: lines can reference it via the normal env-var path.
+static void run_state_bind_herescript_file(RunState *rs) {
+    if (setenv("HERESCRIPT_FILE", rs->script_path, 1) != 0) {
+        perror("herescript: setenv HERESCRIPT_FILE");
+        exit(EXIT_GENERAL_ERROR);
+    }
+}
+
 static void flush_token(RunState *rs, MaybeToken *buf) {
     // Flush any partially-built token that precedes the slice.
     if (buf->is_token) {
@@ -449,12 +458,7 @@ int main(int argc, char **argv) {
     }
     rs.script_path = resolved_path;
 
-    // Bind HERESCRIPT_FILE in the process environment so that the subprocess
-    // inherits it and #: lines can reference it via the normal env-var path.
-    if (setenv("HERESCRIPT_FILE", rs.script_path, 1) != 0) {
-        perror("herescript: setenv HERESCRIPT_FILE");
-        return EXIT_GENERAL_ERROR;
-    }
+    run_state_bind_herescript_file(&rs);
 
     // Store user-supplied arguments so that ${N} (Step 2e) can expand them.
     rs.user_params = (argc > 3) ? &argv[3] : NULL;
