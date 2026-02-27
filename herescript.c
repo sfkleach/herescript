@@ -23,12 +23,14 @@ typedef struct {
     size_t capacity;
 } StringArray;
 
-// Global state.
-static StringArray arguments;
-static char *script_path = NULL;
-static char *executable = NULL;
-static char **user_params = NULL;  // Points into argv at the first user-supplied argument.
-static int user_param_count = 0;   // Number of user-supplied arguments.
+// All mutable state for a single herescript invocation.
+typedef struct {
+    StringArray  arguments;
+    char        *script_path;      // Resolved (realpath) path to the script file.
+    char        *executable;       // The interpreter to exec.
+    char       **user_params;      // Points into argv at the first user-supplied argument.
+    int          user_param_count; // Number of user-supplied arguments.
+} RunState;
 
 // ============================================================================
 // Dynamic Array Utilities
@@ -69,6 +71,15 @@ static char *strdup_safe(const char *s) {
     return dup;
 }
 
+static char *strndup_safe(const char *s, size_t n) {
+    char *dup = strndup(s, n);
+    if (!dup) {
+        perror("strndup");
+        exit(EXIT_GENERAL_ERROR);
+    }
+    return dup;
+}
+
 // ============================================================================
 // Environment Variable Lookup
 // ============================================================================
@@ -87,39 +98,42 @@ static const char *getenv_or_fail(const char *name) {
 // New-style Header Line Parsing (#:, #|)
 // ============================================================================
 
-// Growable byte buffer for token construction.
+// A builder for the equivalent of Option<Token>. 
 typedef struct {
+    bool is_token; // True if this builder will generate a token, false if not.
     char  *data;
     size_t len;
     size_t cap;
-} ByteBuf;
+} MaybeToken;
 
-static void bytebuf_init(ByteBuf *b, size_t initial_cap) {
+static void maybe_token_init(MaybeToken *b, size_t initial_cap) {
+    b->is_token = false;
     b->data = malloc(initial_cap);
     if (!b->data) { perror("malloc"); exit(EXIT_GENERAL_ERROR); }
     b->len = 0;
     b->cap = initial_cap;
 }
 
-static void bytebuf_append(ByteBuf *b, char c) {
+static void maybe_token_append(MaybeToken *b, char c) {
     if (b->len + 1 >= b->cap) {
         b->cap *= 2;
         b->data = realloc(b->data, b->cap);
         if (!b->data) { perror("realloc"); exit(EXIT_GENERAL_ERROR); }
     }
     b->data[b->len++] = c;
+    b->is_token = true;
 }
 
-// Returns a strdup'd NUL-terminated copy of the accumulated bytes and resets
-// the length to zero so the buffer can be reused for the next token.
-static char *bytebuf_take(ByteBuf *b) {
+// Returns the accumulated token as a strdup'd NUL-terminated string.
+static char *maybe_token_take(MaybeToken *b) {
     b->data[b->len] = '\0';
     char *s = strdup_safe(b->data);
     b->len = 0;
+    b->is_token = false;
     return s;
 }
 
-static void bytebuf_free(ByteBuf *b) {
+static void maybe_token_free(MaybeToken *b) {
     free(b->data);
     b->data = NULL;
 }
@@ -127,194 +141,196 @@ static void bytebuf_free(ByteBuf *b) {
 // Append the character produced by a backslash escape sequence. The argument
 // is the character immediately following the backslash. Unrecognised escapes
 // emit the backslash and the character literally.
-static void bytebuf_append_escape(ByteBuf *b, char c) {
+static void maybe_token_append_escape(MaybeToken *b, char c) {
+    b->is_token = true;
     switch (c) {
-        case '\\': bytebuf_append(b, '\\'); break;
-        case '\'': bytebuf_append(b, '\''); break;
-        case '"':  bytebuf_append(b, '"');  break;
-        case 's':  bytebuf_append(b, ' ');  break;
-        case 'n':  bytebuf_append(b, '\n'); break;
-        case 't':  bytebuf_append(b, '\t'); break;
-        case 'r':  bytebuf_append(b, '\r'); break;
+        case '\\': maybe_token_append(b, '\\'); break;
+        case '\'': maybe_token_append(b, '\''); break;
+        case '"':  maybe_token_append(b, '"');  break;
+        case 's':  maybe_token_append(b, ' ');  break;
+        case 'n':  maybe_token_append(b, '\n'); break;
+        case 't':  maybe_token_append(b, '\t'); break;
+        case 'r':  maybe_token_append(b, '\r'); break;
         default:
-            bytebuf_append(b, '\\');
-            bytebuf_append(b, c);
+            maybe_token_append(b, '\\');
+            maybe_token_append(b, c);
             break;
     }
 }
 
-// Process a #: arguments line using shell-like tokenisation.
-// Step 2c: $'...' enables backslash escape processing inside a single-quoted
-// span. Plain '...' spans remain literal (no escapes). Both forms concatenate
-// with adjacent unquoted or quoted text into a single token.
-// Step 2d: ${NAME} outside quotes expands to the value of environment variable
-// NAME. An undefined variable is a fatal error. The expanded text is appended
-// to the current token without further word-splitting.
-// Step 2e: ${0} expands to the script path (via realpath), synonymous with
-// ${HERESCRIPT_FILE}. ${N} for N >= 1 expands to the N-th user-supplied
-// argument (i.e. the arguments passed after the script name on the command
-// line). Out-of-range parameters expand to the empty string.
-// Step 2f: ${A:B} is a parameter slice that expands to B-A separate arguments.
-// A defaults to 0 and B defaults to argc (user_param_count + 1). $@ is a
-// synonym for ${1:}.
+// Mark the builder as containing a token, even if no characters have been appended.
+static void maybe_token_is_token(MaybeToken *b) {
+    b->is_token = true;
+}
+
+// ============================================================================
+// RunState
+// ============================================================================
+
+static void flush_token(RunState *rs, MaybeToken *buf) {
+    // Flush any partially-built token that precedes the slice.
+    if (buf->is_token) {
+        append_string_array(&rs->arguments, maybe_token_take(buf));
+    }
+}
 
 // Emit one argument for each parameter in the half-open range [slice_a, slice_b).
 // Parameter 0 is the script path; parameters 1..user_param_count are the
 // user-supplied arguments; parameters beyond that expand to empty strings.
 // Any partially-accumulated content in buf is flushed as a separate argument
 // before the slice elements are emitted.
-static void expand_slice(ByteBuf *buf, int slice_a, int slice_b) {
-    // Flush any partially-built token that precedes the slice.
-    if (buf->len > 0) {
-        append_string_array(&arguments, bytebuf_take(buf));
-    }
+static void expand_slice(RunState *rs, MaybeToken *buf, int slice_a, int slice_b) {
+    flush_token(rs, buf);
     for (int i = slice_a; i < slice_b; i++) {
         const char *value;
         if (i == 0) {
-            value = script_path;
-        } else if (i <= user_param_count) {
-            value = user_params[i - 1];
+            value = rs->script_path;
+        } else if (i <= rs->user_param_count) {
+            value = rs->user_params[i - 1];
         } else {
             value = "";
         }
-        append_string_array(&arguments, strdup_safe(value));
+        append_string_array(&rs->arguments, strdup_safe(value));
     }
 }
 
-static void process_colon_line(const char *line) {
-    // Skip the "#:" prefix.
-    const char *p = line + 2;
-    ByteBuf buf;
-    bytebuf_init(&buf, 64);
+// Parse a $'...' escape-quoted span. Called after consuming the $' prefix.
+// Backslash escapes are processed; there is no variable interpolation.
+// Advances *p past the closing single quote.
+static void scan_dollar_single_quote(MaybeToken *b, const char **cursor) {
+    while (**cursor && **cursor != '\'') {
+        if (**cursor == '\\' && *(*cursor + 1)) {
+            (*cursor)++;  // Skip backslash.
+            maybe_token_append_escape(b, *(*cursor)++);
+        } else {
+            maybe_token_append(b, *(*cursor)++);
+        }
+    }
+    if (**cursor == '\'') {
+        (*cursor)++;  // Skip closing quote.
+    } else {
+        fprintf(stderr, "herescript: unterminated $' string in #: line\n");
+        maybe_token_free(b);
+        exit(EXIT_INVALID_HEADER);
+    }
+}
 
-    while (*p) {
-        // Skip inter-token whitespace.
-        while (*p && isspace((unsigned char)*p)) p++;
-        if (!*p) break;
+// Parse a '...' plain single-quoted span. Called after consuming the opening quote.
+// No escapes or substitutions are performed; content is appended literally.
+// Advances *p past the closing single quote.
+static void scan_single_quote(MaybeToken *b, const char **cursor) {
+    while (**cursor && **cursor != '\'') maybe_token_append(b, *(*cursor)++);
+    if (**cursor == '\'') {
+        (*cursor)++;  // Skip closing quote.
+    } else {
+        fprintf(stderr, "herescript: unterminated single quote in #: line\n");
+        maybe_token_free(b);
+        exit(EXIT_INVALID_HEADER);
+    }
+}
 
-        // Accumulate one token.
-        // has_scalar is true when at least one scalar (non-slice) expression has
-        // contributed to this token. This ensures that a scalar expansion producing
-        // an empty string (e.g. an out-of-range ${N}) still yields an empty-string
-        // argument, while a standalone slice expansion yields nothing extra.
-        bool has_scalar = false;
-        while (*p && !isspace((unsigned char)*p)) {
-            if (*p == '$' && *(p + 1) == '@') {
-                // $@ is a synonym for ${1:} — all user-supplied arguments as separate tokens.
-                p += 2;
-                expand_slice(&buf, 1, user_param_count + 1);
-            } else if (*p == '$' && *(p + 1) == '\'') {
-                // Escape-enabled single-quoted span: $'...'.
-                // Backslash escapes are processed; no interpolation.
-                p += 2;  // Skip $'.
-                while (*p && *p != '\'') {
-                    if (*p == '\\' && *(p + 1)) {
-                        p++;  // Skip backslash.
-                        bytebuf_append_escape(&buf, *p++);
-                    } else {
-                        bytebuf_append(&buf, *p++);
-                    }
-                }
-                if (*p == '\'') {
-                    p++;  // Skip closing quote.
-                } else {
-                    fprintf(stderr, "herescript: unterminated $' string in #: line\n");
-                    bytebuf_free(&buf);
-                    exit(EXIT_INVALID_HEADER);
-                }
-            } else if (*p == '$' && *(p + 1) == '{') {
-                // Variable or parameter substitution: ${NAME} or ${N}.
-                p += 2;  // Skip ${.
-                const char *name_start = p;
-                while (*p && *p != '}') p++;
-                if (!*p) {
-                    fprintf(stderr, "herescript: unterminated ${ in #: line\n");
-                    bytebuf_free(&buf);
-                    exit(EXIT_INVALID_HEADER);
-                }
-                size_t name_len = (size_t)(p - name_start);
-                char *name = malloc(name_len + 1);
-                if (!name) { perror("malloc"); exit(EXIT_GENERAL_ERROR); }
-                memcpy(name, name_start, name_len);
-                name[name_len] = '\0';
-                p++;  // Skip }.
+// Parse and expand a ${...} substitution. Called after consuming the ${ prefix.
+// Handles both slice syntax (${A:B}) and scalar substitution (${N} or ${NAME}).
+// Advances *p past the closing brace.
+static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **cursor) {
+    const char *name_start = *cursor;
+    while (**cursor && **cursor != '}') (*cursor)++;
+    if (!**cursor) {
+        fprintf(stderr, "herescript: unterminated ${ in #: line\n");
+        maybe_token_free(buf);
+        exit(EXIT_INVALID_HEADER);
+    }
+    char *name = strndup_safe(name_start, (size_t)(*cursor - name_start));
+    size_t name_len = strlen(name);
+    (*cursor)++;  // Skip }.
 
-                const char *value;
-                // Check for slice syntax: the name contains a colon.
-                char *colon = strchr(name, ':');
-                if (colon != NULL) {
-                    // ${A:B} slice: expands to B-A separate arguments.
-                    // A defaults to 0; B defaults to total argc (user_param_count + 1).
-                    int total_argc = user_param_count + 1;
-                    int slice_a = 0;
-                    int slice_b = total_argc;
-                    *colon = '\0';  // Split the name at the colon.
-                    const char *a_str = name;
-                    const char *b_str = colon + 1;
-                    if (*a_str != '\0') slice_a = atoi(a_str);
-                    if (*b_str != '\0') slice_b = atoi(b_str);
-                    // Clamp to valid range.
-                    if (slice_a < 0) slice_a = 0;
-                    if (slice_b > total_argc) slice_b = total_argc;
-                    if (slice_a > slice_b) slice_a = slice_b;
-                    free(name);
-                    expand_slice(&buf, slice_a, slice_b);
-                    // expand_slice does not break the token loop; continue accumulating.
-                } else {
-                    // Scalar substitution: ${N} or ${NAME}.
-                    // Check whether the name is a non-negative integer (parameter reference).
-                    bool is_numeric = (name_len > 0);
-                    for (size_t k = 0; k < name_len && is_numeric; k++) {
-                        if (!isdigit((unsigned char)name[k])) is_numeric = false;
-                    }
-                    if (is_numeric) {
-                        int param_num = atoi(name);
-                        if (param_num == 0) {
-                            // ${0} is the script path (via realpath), synonymous with ${HERESCRIPT_FILE}.
-                            value = script_path;
-                        } else if (param_num <= user_param_count) {
-                            value = user_params[param_num - 1];
-                        } else {
-                            // Out-of-range parameter expands to an empty string.
-                            value = "";
-                        }
-                    } else if (strcmp(name, "HERESCRIPT_FILE") == 0) {
-                        // ${HERESCRIPT_FILE} is a synonym for ${0}. Setting it in the
-                        // environment is deferred to Step 2g; here we resolve it directly
-                        // so it works in #: lines without polluting the process environment.
-                        value = script_path;
-                    } else {
-                        value = getenv_or_fail(name);
-                    }
-                    free(name);
-                    has_scalar = true;
-                    for (const char *v = value; *v; v++) bytebuf_append(&buf, *v);
-                }
-            } else if (*p == '\'') {
-                // Plain single-quoted span: literal, no escapes.
-                p++;  // Skip opening quote.
-                while (*p && *p != '\'') bytebuf_append(&buf, *p++);
-                if (*p == '\'') {
-                    p++;  // Skip closing quote.
-                } else {
-                    fprintf(stderr, "herescript: unterminated single quote in #: line\n");
-                    bytebuf_free(&buf);
-                    exit(EXIT_INVALID_HEADER);
-                }
+    char *colon = strchr(name, ':');
+    if (colon != NULL) {
+        // ${A:B} slice: expands to B-A separate arguments.
+        // A defaults to 0; B defaults to total argc (user_param_count + 1).
+        int total_argc = rs->user_param_count + 1;
+        int slice_a = 0;
+        int slice_b = total_argc;
+        *colon = '\0';  // Split the name at the colon.
+        if (*name    != '\0') slice_a = atoi(name);
+        if (*(colon + 1) != '\0') slice_b = atoi(colon + 1);
+        // Clamp to valid range.
+        if (slice_a < 0) slice_a = 0;
+        if (slice_b > total_argc) slice_b = total_argc;
+        if (slice_a > slice_b) slice_a = slice_b;
+        free(name);
+        expand_slice(rs, buf, slice_a, slice_b);
+    } else {
+        // Scalar substitution: ${N} for a positional parameter, or ${NAME} for an env var.
+        // Check whether the name is a non-negative integer (parameter reference).
+        bool is_numeric = (name_len > 0);
+        for (size_t k = 0; k < name_len && is_numeric; k++) {
+            if (!isdigit((unsigned char)name[k])) is_numeric = false;
+        }
+        const char *value;
+        if (is_numeric) {
+            int param_num = atoi(name);
+            if (param_num == 0) {
+                // ${0} is the script path (via realpath), synonymous with ${HERESCRIPT_FILE}.
+                value = rs->script_path;
+            } else if (param_num <= rs->user_param_count) {
+                value = rs->user_params[param_num - 1];
             } else {
-                bytebuf_append(&buf, *p++);
+                // Out-of-range parameter expands to the empty string.
+                value = "";
+            }
+        } else if (strcmp(name, "HERESCRIPT_FILE") == 0) {
+            // ${HERESCRIPT_FILE} is a synonym for ${0}. Setting it in the environment
+            // is deferred to Step 2g; here we resolve it directly so it works in #:
+            // lines without polluting the process environment.
+            value = rs->script_path;
+        } else {
+            value = getenv_or_fail(name);
+        }
+        free(name);
+        maybe_token_is_token(buf);
+        for (const char *v = value; *v; v++) maybe_token_append(buf, *v);
+    }
+}
+
+// Process a #: arguments line using shell-like tokenisation. Tokens are
+// separated by whitespace; quoting and substitution forms are dispatched to
+// dedicated helpers. Steps 2a–2f are handled here collectively.
+static void process_colon_line(RunState *rs, const char *line) {
+    const char *cursor = line + 2;  // Skip the "#:" prefix.
+    MaybeToken buf;
+    maybe_token_init(&buf, 64);
+
+    while (*cursor) {
+        // Skip inter-token whitespace.
+        while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+        if (!*cursor) break;
+
+        // Accumulate one token, dispatching on the leading character(s).
+        while (*cursor && !isspace((unsigned char)*cursor)) {
+            if (*cursor == '$' && *(cursor + 1) == '@') {
+                cursor += 2;
+                expand_slice(rs, &buf, 1, rs->user_param_count + 1);
+            } else if (*cursor == '$' && *(cursor + 1) == '\'') {
+                cursor += 2;
+                scan_dollar_single_quote(&buf, &cursor);
+            } else if (*cursor == '$' && *(cursor + 1) == '{') {
+                cursor += 2;
+                expand_dollar_brace(rs, &buf, &cursor);
+            } else if (*cursor == '\'') {
+                cursor++;
+                scan_single_quote(&buf, &cursor);
+            } else {
+                maybe_token_append(&buf, *cursor++);
             }
         }
 
-        // Only flush if there is remaining buffered content. A slice expansion
-        // calls expand_slice which flushes the buffer itself, so after a
-        // standalone slice the buffer will be empty and nothing should be added.
-        if (buf.len > 0 || has_scalar) {
-            append_string_array(&arguments, bytebuf_take(&buf));
-        }
+        // Flush any remaining content as a token. Slice expansions flush the
+        // buffer themselves, so a standalone slice leaves nothing to flush here.
+        flush_token(rs, &buf);
     }
 
-    bytebuf_free(&buf);
+    maybe_token_free(&buf);
 }
 
 // ============================================================================
@@ -361,8 +377,13 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    // Initialize arrays.
-    init_string_array(&arguments, 16);
+    // Initialize run state.
+    RunState rs;
+    init_string_array(&rs.arguments, 16);
+    rs.script_path = NULL;
+    rs.executable = NULL;
+    rs.user_params = NULL;
+    rs.user_param_count = 0;
 
     // The first argument is the path to the executable to be launched (from the shebang).
     const char *exec_part = argv[1];
@@ -378,17 +399,17 @@ int main(int argc, char **argv) {
         fprintf(stderr, "  Hint: Ensure the script file `%s` exists and is accessible.\n", script_arg);
         return EXIT_GENERAL_ERROR;
     }
-    script_path = resolved_path;
+    rs.script_path = resolved_path;
 
     // Store user-supplied arguments so that ${N} (Step 2e) can expand them.
     // Note: ${HERESCRIPT_FILE} is set in the environment in Step 2g; for now it
     // is handled as a special name inside process_colon_line without polluting
     // the process environment.
-    user_params = (argc > 3) ? &argv[3] : NULL;
-    user_param_count = (argc > 3) ? argc - 3 : 0;
+    rs.user_params = (argc > 3) ? &argv[3] : NULL;
+    rs.user_param_count = (argc > 3) ? argc - 3 : 0;
 
     // Open script file.
-    FILE *fp = fopen(script_path, "r");
+    FILE *fp = fopen(rs.script_path, "r");
     if (!fp) {
         perror("herescript: fopen");
         fprintf(stderr, "  Hint: Ensure the script file `%s` exists and is readable.\n", script_arg);
@@ -454,7 +475,7 @@ int main(int argc, char **argv) {
         return EXIT_MALFORMED_SHEBANG;
     }
     
-    executable = strdup_safe(exec_part);
+    rs.executable = strdup_safe(exec_part);
     free(line);
     line = NULL;
     
@@ -478,7 +499,7 @@ int main(int argc, char **argv) {
 
         if (line[1] == ':') {
             // New-style arguments line: shell-like tokenisation.
-            process_colon_line(line);
+            process_colon_line(&rs, line);
             continue;
         }
         
@@ -490,16 +511,16 @@ int main(int argc, char **argv) {
     fclose(fp);
 
     // Build argv[].
-    size_t new_argc = 1 + arguments.count;
+    size_t new_argc = 1 + rs.arguments.count;
     char **new_argv = malloc((new_argc + 1) * sizeof(char *));
     if (!new_argv) {
         perror("malloc");
         return EXIT_GENERAL_ERROR;
     }
     
-    new_argv[0] = executable;
-    for (size_t i = 0; i < arguments.count; i++) {
-        new_argv[i + 1] = arguments.items[i];
+    new_argv[0] = rs.executable;
+    for (size_t i = 0; i < rs.arguments.count; i++) {
+        new_argv[i + 1] = rs.arguments.items[i];
     }
     new_argv[new_argc] = NULL;
     
@@ -519,14 +540,14 @@ int main(int argc, char **argv) {
     // explicit teardown would be pure ceremony with no practical effect.
     //
     // If executable contains '/', use it as a direct path; otherwise search PATH.
-    if (strchr(executable, '/')) {
-        execve(executable, new_argv, environ);
+    if (strchr(rs.executable, '/')) {
+        execve(rs.executable, new_argv, environ);
     } else {
-        execvp(executable, new_argv);
+        execvp(rs.executable, new_argv);
     }
     
     // If we reach here, exec failed.
     perror("herescript: exec");
-    fprintf(stderr, "  Hint: Ensure '%s' is installed and accessible.\n", executable);
+    fprintf(stderr, "  Hint: Ensure '%s' is installed and accessible.\n", rs.executable);
     return EXIT_EXEC_FAILURE;
 }
