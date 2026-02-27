@@ -204,6 +204,28 @@ static void run_state_bind_herescript_file(RunState *rs) {
     }
 }
 
+// Build a NULL-terminated argv array from rs->executable followed by all
+// accumulated arguments, then exec the interpreter. Does not return on success.
+static int run_state_exec(RunState *rs) {
+    // Capacity is count + 1 for the executable + 1 for the NULL sentinel.
+    StringArray argv_arr;
+    init_string_array(&argv_arr, rs->arguments.count + 2);
+    append_string_array(&argv_arr, rs->executable);
+    for (size_t i = 0; i < rs->arguments.count; i++) {
+        append_string_array(&argv_arr, rs->arguments.items[i]);
+    }
+    argv_arr.items[argv_arr.count] = NULL;
+    if (strchr(rs->executable, '/')) {
+        execve(rs->executable, argv_arr.items, environ);
+    } else {
+        execvp(rs->executable, argv_arr.items);
+    }
+    // If we reach here, exec failed.
+    perror("herescript: exec");
+    fprintf(stderr, "  Hint: Ensure '%s' is installed and accessible.\n", rs->executable);
+    return EXIT_EXEC_FAILURE;
+}
+
 static void run_state_flush_maybe_token(RunState *rs, MaybeToken *buf) {
     // Flush any partially-built token that precedes the slice.
     if (buf->is_token) {
@@ -558,44 +580,12 @@ int main(int argc, char **argv) {
     free(line);
     fclose(fp);
 
-    // Build argv[].
-    size_t new_argc = 1 + rs.arguments.count;
-    char **new_argv = malloc((new_argc + 1) * sizeof(char *));
-    if (!new_argv) {
-        perror("malloc");
-        return EXIT_GENERAL_ERROR;
-    }
-    
-    new_argv[0] = rs.executable;
-    for (size_t i = 0; i < rs.arguments.count; i++) {
-        new_argv[i + 1] = rs.arguments.items[i];
-    }
-    new_argv[new_argc] = NULL;
-    
-    // Bindings have already been applied to the environment during parsing.
-    // The environment is now ready for execution.
-
-    // for (size_t i = 0; i < new_argc; i++) {
-    //     printf("Debug: argv[%zu]: %s\n", i, new_argv[i]);
-    // }
-    
-    // Execute. All memory allocated during this process — arguments, bindings,
+    // All memory allocated during this process — arguments, bindings,
     // script_path, executable, new_argv — is intentionally left unfreed. On a
     // successful exec the kernel replaces the process image entirely, so the
     // allocations simply cease to exist. On an error return main() exits
     // immediately afterward and the OS reclaims everything. There is no code
     // path in which this process continues running after this point, so
     // explicit teardown would be pure ceremony with no practical effect.
-    //
-    // If executable contains '/', use it as a direct path; otherwise search PATH.
-    if (strchr(rs.executable, '/')) {
-        execve(rs.executable, new_argv, environ);
-    } else {
-        execvp(rs.executable, new_argv);
-    }
-    
-    // If we reach here, exec failed.
-    perror("herescript: exec");
-    fprintf(stderr, "  Hint: Ensure '%s' is installed and accessible.\n", rs.executable);
-    return EXIT_EXEC_FAILURE;
+    return run_state_exec(&rs);
 }
