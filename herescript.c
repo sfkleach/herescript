@@ -215,6 +215,15 @@ static void run_state_bind_herescript_file(RunState *rs) {
     }
 }
 
+// Bind HERESCRIPT_COMMAND in the process environment so that the subprocess
+// inherits the interpreter name from the shebang line.
+static void run_state_bind_herescript_command(RunState *rs) {
+    if (setenv("HERESCRIPT_COMMAND", rs->executable, 1) != 0) {
+        perror("herescript: setenv HERESCRIPT_COMMAND");
+        exit(EXIT_GENERAL_ERROR);
+    }
+}
+
 // Build a NULL-terminated argv array from rs->executable followed by all
 // accumulated arguments, then exec the interpreter. Does not return on success.
 static int run_state_exec(RunState *rs) {
@@ -565,6 +574,7 @@ int main(int argc, char **argv) {
     }
     
     rs.executable = strdup_safe(exec_part);
+    run_state_bind_herescript_command(&rs);
     free(line);
     line = NULL;
     
