@@ -187,6 +187,14 @@ static void maybe_token_is_token(MaybeToken *b) {
 // RunState
 // ============================================================================
 
+static void run_state_init(RunState *rs) {
+    init_string_array(&rs->arguments, 16);
+    rs->script_path = NULL;
+    rs->executable = NULL;
+    rs->user_params = NULL;
+    rs->user_param_count = 0;
+}
+
 static void flush_token(RunState *rs, MaybeToken *buf) {
     // Flush any partially-built token that precedes the slice.
     if (buf->is_token) {
@@ -243,8 +251,9 @@ static void expand_slice_notation(RunState *rs, MaybeToken *buf, char *name) {
 }
 
 // Resolve and append a scalar ${NAME} or ${N} substitution to buf. Numeric names
-// are treated as positional parameters; ${HERESCRIPT_FILE} is a synonym for ${0};
-// all other names are looked up in the environment (fatal if unset).
+// are treated as positional parameters; ${0} is a synonym for ${HERESCRIPT_FILE}
+// (which is also set in the environment). All other names are looked up in the
+// environment (fatal if unset).
 static void expand_scalar_name(RunState *rs, MaybeToken *buf, const char *name) {
     size_t name_len = strlen(name);
     bool is_numeric = (name_len > 0);
@@ -263,11 +272,6 @@ static void expand_scalar_name(RunState *rs, MaybeToken *buf, const char *name) 
             // Out-of-range parameter expands to the empty string.
             value = "";
         }
-    } else if (strcmp(name, "HERESCRIPT_FILE") == 0) {
-        // ${HERESCRIPT_FILE} is a synonym for ${0}. Setting it in the environment
-        // is deferred to Step 2g; here we resolve it directly so it works in #:
-        // lines without polluting the process environment.
-        value = rs->script_path;
     } else {
         value = getenv_or_fail(name);
     }
@@ -427,11 +431,7 @@ int main(int argc, char **argv) {
 
     // Initialize run state.
     RunState rs;
-    init_string_array(&rs.arguments, 16);
-    rs.script_path = NULL;
-    rs.executable = NULL;
-    rs.user_params = NULL;
-    rs.user_param_count = 0;
+    run_state_init(&rs);
 
     // The first argument is the path to the executable to be launched (from the shebang).
     const char *exec_part = argv[1];
@@ -449,10 +449,14 @@ int main(int argc, char **argv) {
     }
     rs.script_path = resolved_path;
 
+    // Bind HERESCRIPT_FILE in the process environment so that the subprocess
+    // inherits it and #: lines can reference it via the normal env-var path.
+    if (setenv("HERESCRIPT_FILE", rs.script_path, 1) != 0) {
+        perror("herescript: setenv HERESCRIPT_FILE");
+        return EXIT_GENERAL_ERROR;
+    }
+
     // Store user-supplied arguments so that ${N} (Step 2e) can expand them.
-    // Note: ${HERESCRIPT_FILE} is set in the environment in Step 2g; for now it
-    // is handled as a special name inside process_colon_line without polluting
-    // the process environment.
     rs.user_params = (argc > 3) ? &argv[3] : NULL;
     rs.user_param_count = (argc > 3) ? argc - 3 : 0;
 
