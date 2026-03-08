@@ -2,6 +2,21 @@
 
 [![Build and Test](https://github.com/sfkleach/herescript/actions/workflows/build-and-test.yml/badge.svg)](https://github.com/sfkleach/herescript/actions/workflows/build-and-test.yml)
 
+## What is herescript for?
+
+I have always loved the conceptual elegance of Unix's `#!` mechanism for
+treating scripts as executables. But it is limited to passing only a single
+option (on Linux), and the position of the script file in the argument list is
+fixed.
+
+The idiomatic use of `#!/usr/bin/env <program>` simply to locate the program on
+`$PATH` hints at common, unmet requirements. `herescript` is a tiny launcher
+that fixes these limits: it performs path expansion, supports shell-like
+argument construction, allows binding environment variables, and more — all in
+a single, readable script without any additional files.
+
+## Overview
+
 `herescript` is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism. It provides:
 
 - shell-like argument declarations with full quoting and substitution
