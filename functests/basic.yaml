@@ -808,3 +808,109 @@ tests:
               "prefix-default-suffix"
           ]
       }
+  - name: bare-dollar-name-unquoted
+    description: "$NAME expands in unquoted context"
+    env:
+      MYVAL: "hello"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: $MYVAL
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/bare-dollar-name-unquoted.sh",
+              "MYVAL=hello"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello"
+          ]
+      }
+
+  - name: bare-dollar-name-adjacent
+    description: "$FOO.bar expands FOO greedily, .bar is literal"
+    env:
+      FOO: "expanded"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: $FOO.bar
+    output: |
+      {
+          "env": [
+              "FOO=expanded",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/bare-dollar-name-adjacent.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "expanded.bar"
+          ]
+      }
+
+  - name: bare-dollar-name-in-double-quotes
+    description: "$NAME expands inside double quotes"
+    env:
+      GREETING: "world"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: "hello $GREETING"
+    output: |
+      {
+          "env": [
+              "GREETING=world",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/bare-dollar-name-in-double-quotes.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello world"
+          ]
+      }
+
+  - name: bare-dollar-positional
+    description: "$1 expands as a bare positional parameter"
+    args:
+      - "argone"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: --arg=$1
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/bare-dollar-positional.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--arg=argone"
+          ]
+      }
+
+  - name: bare-dollar-multi-digit
+    description: "$10 expands as parameter 10 (greedy digit run)"
+    args:
+      - "p1"
+      - "p2"
+      - "p3"
+      - "p4"
+      - "p5"
+      - "p6"
+      - "p7"
+      - "p8"
+      - "p9"
+      - "p10"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: $10
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/bare-dollar-multi-digit.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "p10"
+          ]
+      }

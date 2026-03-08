@@ -455,6 +455,35 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
 
 // Parse a "..." double-quoted span. Called after consuming the opening quote.
 // Supports ${...} variable interpolation and minimal backslash escapes: \\ \" \$.
+// Also supports bare $NAME and $<digits> using greedy bash-style matching.
+// All other backslash sequences are passed through literally.
+// Advances *cursor past the closing double quote.
+
+// Expand a bare $NAME or $<digits> substitution using greedy, bash-style
+// matching. Called after consuming the '$'; *cursor points at the first
+// character of the name. Advances *cursor past the consumed name.
+static void expand_dollar_bare(RunState *rs, MaybeToken *buf, const char **cursor) {
+    const char *name_start = *cursor;
+    if (isdigit((unsigned char)**cursor)) {
+        // Greedy digit run: $1, $10, $123, etc.
+        while (isdigit((unsigned char)**cursor)) {
+            (*cursor)++;
+        }
+    } else {
+        // Greedy identifier: starts with letter or underscore, continues with
+        // alphanumerics or underscores.
+        (*cursor)++;  // The first character has already been validated by the caller.
+        while (isalnum((unsigned char)**cursor) || **cursor == '_') {
+            (*cursor)++;
+        }
+    }
+    char *name = strndup_safe(name_start, (size_t)(*cursor - name_start));
+    expand_scalar_name(rs, buf, name);
+    free(name);
+}
+
+// Parse a "..." double-quoted span. Called after consuming the opening quote.
+// Supports ${...} variable interpolation and minimal backslash escapes: \\ \" \$.
 // All other backslash sequences are passed through literally.
 // Advances *cursor past the closing double quote.
 static void scan_double_quote(RunState *rs, MaybeToken *buf, const char **cursor) {
@@ -463,6 +492,13 @@ static void scan_double_quote(RunState *rs, MaybeToken *buf, const char **cursor
         if (**cursor == '$' && *((*cursor) + 1) == '{') {
             (*cursor) += 2;
             expand_dollar_brace(rs, buf, cursor);
+        } else if (**cursor == '$' &&
+                   (isalpha((unsigned char)*((*cursor) + 1)) ||
+                    *((*cursor) + 1) == '_' ||
+                    isdigit((unsigned char)*((*cursor) + 1)))) {
+            // Bare $NAME or $<digits> — greedy bash-style expansion.
+            (*cursor)++;
+            expand_dollar_bare(rs, buf, cursor);
         } else if (**cursor == '\\' && *((*cursor) + 1) == '\\') {
             (*cursor)++;  // Skip backslash.
             maybe_token_append(buf, *(*cursor)++);
@@ -558,6 +594,13 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
             } else if (*cursor == '$' && *(cursor + 1) == '{') {
                 cursor += 2;
                 expand_dollar_brace(rs, &buf, &cursor);
+            } else if (*cursor == '$' &&
+                       (isalpha((unsigned char)*(cursor + 1)) ||
+                        *(cursor + 1) == '_' ||
+                        isdigit((unsigned char)*(cursor + 1)))) {
+                // Bare $NAME or $<digits> — greedy bash-style expansion.
+                cursor++;
+                expand_dollar_bare(rs, &buf, &cursor);
             } else if (*cursor == '\'') {
                 cursor++;
                 scan_single_quote(&buf, &cursor);
