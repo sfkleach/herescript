@@ -502,7 +502,7 @@ tests:
   - name: conditional-binding-unset
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #: MYVAR:-default ${0}
+      #: MYVAR:=default ${0}
     output: |
       {
           "env": [
@@ -521,7 +521,7 @@ tests:
       MYVAR: existing
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #: MYVAR:-default ${0}
+      #: MYVAR:=default ${0}
     output: |
       {
           "env": [
@@ -538,7 +538,7 @@ tests:
   - name: conditional-binding-empty-default
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #: MYVAR:- ${0}
+      #: MYVAR:= ${0}
     output: |
       {
           "env": [
@@ -555,7 +555,7 @@ tests:
   - name: conditional-binding-quoted-value
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #: GREETING:-"hello world" ${0}
+      #: GREETING:="hello world" ${0}
     output: |
       {
           "env": [
@@ -572,7 +572,7 @@ tests:
   - name: conditional-and-unconditional-bindings
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #: FOO=bar BAZ:-default ${0}
+      #: FOO=bar BAZ:=default ${0}
     output: |
       {
           "env": [
@@ -701,3 +701,110 @@ tests:
       #>
     exit_code: 4
     stderr: "herescript: malformed #> line (expected '#> ' prefix)\n"
+  - name: inline-default-dash-unset
+    description: "${NAME-VALUE} with unset NAME uses the default"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: --val=${UNSET_VAR_XYZ-fallback}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-dash-unset.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--val=fallback"
+          ]
+      }
+
+  - name: inline-default-dash-set
+    description: "${NAME-VALUE} with set NAME uses the env value"
+    env:
+      MY_VAR: "fromenv"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: --val=${MY_VAR-fallback}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-dash-set.sh",
+              "MY_VAR=fromenv"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--val=fromenv"
+          ]
+      }
+
+  - name: inline-default-coloneq-unset
+    description: "${NAME:=VALUE} with unset NAME uses the default"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: --val=${UNSET_VAR_XYZ:=fallback}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-coloneq-unset.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--val=fallback"
+          ]
+      }
+
+  - name: inline-default-coloneq-set
+    description: "${NAME:=VALUE} with set NAME uses the env value"
+    env:
+      MY_VAR: "fromenv"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: --val=${MY_VAR:=fallback}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-coloneq-set.sh",
+              "MY_VAR=fromenv"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--val=fromenv"
+          ]
+      }
+
+  - name: inline-default-empty-value
+    description: "${NAME-} with unset NAME defaults to empty string"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: --val=${UNSET_VAR_XYZ-}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-empty-value.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--val="
+          ]
+      }
+
+  - name: inline-default-in-double-quotes
+    description: "${NAME-VALUE} works inside double quotes"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: "prefix-${UNSET_VAR_XYZ-default}-suffix"
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-in-double-quotes.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "prefix-default-suffix"
+          ]
+      }
