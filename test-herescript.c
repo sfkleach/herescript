@@ -95,6 +95,10 @@ static void print_string_array(const char *label, char **strings, int count) {
     printf("    ]");
 }
 
+static int compare_strings(const void *a, const void *b) {
+    return strcmp(*(const char **)a, *(const char **)b);
+}
+
 int main(int argc, char *argv[]) {
     // Count environment variables.
     int env_count = 0;
@@ -102,11 +106,22 @@ int main(int argc, char *argv[]) {
         env_count++;
     }
 
+    // Sort environment variables for deterministic output.
+    char **sorted_env = malloc((size_t)env_count * sizeof(char *));
+    if (!sorted_env) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return 1;
+    }
+    for (int i = 0; i < env_count; i++) {
+        sorted_env[i] = environ[i];
+    }
+    qsort(sorted_env, (size_t)env_count, sizeof(char *), compare_strings);
+
     // Output JSON.
     printf("{\n");
     
     // Print environment variables.
-    print_string_array("env", environ, env_count);
+    print_string_array("env", sorted_env, env_count);
     printf(",\n");
     
     // Print arguments.
@@ -115,5 +130,6 @@ int main(int argc, char *argv[]) {
     
     printf("}\n");
 
+    free(sorted_env);
     return 0;
 }

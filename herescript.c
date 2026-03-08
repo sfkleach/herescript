@@ -437,13 +437,33 @@ static void scan_double_quote(RunState *rs, MaybeToken *buf, const char **cursor
     }
 }
 
+// Return true when cursor points to a shell-style identifier start: a letter
+// or underscore followed by zero or more alphanumerics/underscores and then '='.
+// If so, *eq_out is set to point at the '=' character.
+static bool is_binding_start(const char *cursor, const char **eq_out) {
+    if (!isalpha((unsigned char)*cursor) && *cursor != '_') return false;
+    const char *p = cursor + 1;
+    while (isalnum((unsigned char)*p) || *p == '_') {
+        p++;
+    }
+    if (*p != '=') return false;
+    *eq_out = p;
+    return true;
+}
+
 // Process a #: arguments line using shell-like tokenisation. Tokens are
 // separated by whitespace; quoting and substitution forms are dispatched to
-// dedicated helpers. Steps 2a–2f are handled here collectively.
+// dedicated helpers.
+//
+// Leading tokens of the form NAME=VALUE are treated as environment variable
+// bindings (like the shell). Once a non-binding token is seen, all subsequent
+// tokens are arguments. Quoting the name or '=' prevents binding recognition,
+// providing an escape mechanism.
 static void run_state_process_colon_line(RunState *rs, const char *line) {
     const char *cursor = line + 2;  // Skip the "#:" prefix.
     MaybeToken buf;
     maybe_token_init(&buf, 64);
+    bool binding_prefix = true;  // Still in the leading binding portion of the line.
 
     while (*cursor) {
         // Skip inter-token whitespace.
@@ -451,6 +471,19 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
             cursor++;
         }
         if (!*cursor) break;
+
+        // While still in the binding prefix, check for NAME=... syntax.
+        char *binding_name = NULL;
+        if (binding_prefix) {
+            const char *eq;
+            if (is_binding_start(cursor, &eq)) {
+                binding_name = strndup_safe(cursor, (size_t)(eq - cursor));
+                cursor = eq + 1;  // Advance past '='.
+            }
+        }
+        if (!binding_name) {
+            binding_prefix = false;
+        }
 
         // Accumulate one token, dispatching on the leading character(s).
         while (*cursor && !isspace((unsigned char)*cursor)) {
@@ -477,9 +510,28 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
             }
         }
 
-        // Flush any remaining content as a token. Slice expansions flush the
-        // buffer themselves, so a standalone slice leaves nothing to flush here.
-        run_state_flush_maybe_token(rs, &buf);
+        if (binding_name) {
+            // Collect the value and bind it as an environment variable.
+            char *value;
+            if (buf.is_token) {
+                value = maybe_token_take(&buf);
+            } else {
+                value = strdup_safe("");
+            }
+            if (setenv(binding_name, value, 1) != 0) {
+                perror("herescript: setenv");
+                maybe_token_free(&buf);
+                free(binding_name);
+                free(value);
+                exit(EXIT_GENERAL_ERROR);
+            }
+            free(binding_name);
+            free(value);
+        } else {
+            // Flush any remaining content as a token. Slice expansions flush the
+            // buffer themselves, so a standalone slice leaves nothing to flush here.
+            run_state_flush_maybe_token(rs, &buf);
+        }
     }
 
     maybe_token_free(&buf);
