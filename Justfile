@@ -4,7 +4,7 @@ default:
 test: functest lint
 
 lint:
-    cppcheck --library=posix --suppress=missingIncludeSystem --enable=all --error-exitcode=1 herescript.c test-herescript.c
+    cppcheck --library=posix --suppress=missingIncludeSystem --suppress=checkersReport --enable=all --error-exitcode=1 herescript.c test-herescript.c
 
 rebuild: clean build
 

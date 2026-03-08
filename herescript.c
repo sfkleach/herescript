@@ -335,8 +335,11 @@ static void expand_scalar_name(RunState *rs, MaybeToken *buf, const char *name) 
 // Parse a $'...' escape-quoted span. Called after consuming the $' prefix.
 // Backslash escapes are processed; there is no variable interpolation.
 // Advances *p past the closing single quote.
-static void scan_dollar_single_quote(MaybeToken *b, const char **cursor) {
-    while (**cursor && **cursor != '\'') {
+
+// Common implementation for $'...' and $"..." escape-quoted spans.
+// closing_quote: the character to terminate on (' or ").
+static void scan_dollar(MaybeToken *b, const char **cursor, char closing_quote) {
+    while (**cursor && **cursor != closing_quote) {
         if (**cursor == '\\' && *(*cursor + 1)) {
             (*cursor)++;  // Skip backslash.
             maybe_token_append_escape(b, *(*cursor)++);
@@ -344,34 +347,21 @@ static void scan_dollar_single_quote(MaybeToken *b, const char **cursor) {
             maybe_token_append(b, *(*cursor)++);
         }
     }
-    if (**cursor == '\'') {
+    if (**cursor == closing_quote) {
         (*cursor)++;  // Skip closing quote.
     } else {
-        fprintf(stderr, "herescript: unterminated $' string in #: line\n");
+        fprintf(stderr, "herescript: unterminated $%c string in #: line\n", closing_quote);
         maybe_token_free(b);
         exit(EXIT_INVALID_HEADER);
     }
 }
 
-// Parse a $"..." escape-quoted span. Called after consuming the $" prefix.
-// Full backslash escapes are processed; there is no variable interpolation.
-// Advances *cursor past the closing double quote.
+static void scan_dollar_single_quote(MaybeToken *b, const char **cursor) {
+    scan_dollar(b, cursor, '\'');
+}
+
 static void scan_dollar_double_quote(MaybeToken *b, const char **cursor) {
-    while (**cursor && **cursor != '"') {
-        if (**cursor == '\\' && *(*cursor + 1)) {
-            (*cursor)++;  // Skip backslash.
-            maybe_token_append_escape(b, *(*cursor)++);
-        } else {
-            maybe_token_append(b, *(*cursor)++);
-        }
-    }
-    if (**cursor == '"') {
-        (*cursor)++;  // Skip closing quote.
-    } else {
-        fprintf(stderr, "herescript: unterminated $\" string in #: line\n");
-        maybe_token_free(b);
-        exit(EXIT_INVALID_HEADER);
-    }
+    scan_dollar(b, cursor, '"');
 }
 
 // Parse a '...' plain single-quoted span. Called after consuming the opening quote.
