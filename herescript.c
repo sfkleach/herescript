@@ -196,6 +196,7 @@ typedef struct {
     char        *executable;       // The interpreter to exec.
     char       **user_params;      // Points into argv at the first user-supplied argument.
     int          user_param_count; // Number of user-supplied arguments.
+    int          inline_arg_count; // Counter for HERESCRIPT0, HERESCRIPT1, etc.
 } RunState;
 
 static void run_state_init(RunState *rs) {
@@ -204,6 +205,7 @@ static void run_state_init(RunState *rs) {
     rs->executable = NULL;
     rs->user_params = NULL;
     rs->user_param_count = 0;
+    rs->inline_arg_count = 0;
 }
 
 // Bind HERESCRIPT_FILE in the process environment so that the subprocess
@@ -437,18 +439,27 @@ static void scan_double_quote(RunState *rs, MaybeToken *buf, const char **cursor
     }
 }
 
-// Return true when cursor points to a shell-style identifier start: a letter
-// or underscore followed by zero or more alphanumerics/underscores and then '='.
-// If so, *eq_out is set to point at the '=' character.
-static bool is_binding_start(const char *cursor, const char **eq_out) {
+// Return true when cursor points to a shell-style binding: an identifier
+// (letter or underscore, followed by alphanumerics/underscores) then either
+// '=' (unconditional) or ':-' (conditional). On match, *sep_out points at the
+// '=' or ':', and *conditional is set accordingly.
+static bool is_binding_start(const char *cursor, const char **sep_out, bool *conditional) {
     if (!isalpha((unsigned char)*cursor) && *cursor != '_') return false;
     const char *p = cursor + 1;
     while (isalnum((unsigned char)*p) || *p == '_') {
         p++;
     }
-    if (*p != '=') return false;
-    *eq_out = p;
-    return true;
+    if (*p == '=') {
+        *sep_out = p;
+        *conditional = false;
+        return true;
+    }
+    if (*p == ':' && *(p + 1) == '-') {
+        *sep_out = p;
+        *conditional = true;
+        return true;
+    }
+    return false;
 }
 
 // Process a #: arguments line using shell-like tokenisation. Tokens are
@@ -472,13 +483,15 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
         }
         if (!*cursor) break;
 
-        // While still in the binding prefix, check for NAME=... syntax.
+        // While still in the binding prefix, check for NAME=... or NAME:-... syntax.
         char *binding_name = NULL;
+        bool binding_conditional = false;
         if (binding_prefix) {
-            const char *eq;
-            if (is_binding_start(cursor, &eq)) {
-                binding_name = strndup_safe(cursor, (size_t)(eq - cursor));
-                cursor = eq + 1;  // Advance past '='.
+            const char *sep;
+            if (is_binding_start(cursor, &sep, &binding_conditional)) {
+                binding_name = strndup_safe(cursor, (size_t)(sep - cursor));
+                // Advance past '=' or ':-'.
+                cursor = sep + (binding_conditional ? 2 : 1);
             }
         }
         if (!binding_name) {
@@ -512,13 +525,15 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
 
         if (binding_name) {
             // Collect the value and bind it as an environment variable.
+            // Conditional bindings (NAME:-VALUE) only take effect when NAME is unset.
             char *value;
             if (buf.is_token) {
                 value = maybe_token_take(&buf);
             } else {
                 value = strdup_safe("");
             }
-            if (setenv(binding_name, value, 1) != 0) {
+            bool should_set = !binding_conditional || getenv(binding_name) == NULL;
+            if (should_set && setenv(binding_name, value, 1) != 0) {
                 perror("herescript: setenv");
                 maybe_token_free(&buf);
                 free(binding_name);
@@ -682,9 +697,32 @@ int main(int argc, char **argv) {
     // Parse header lines. Trailing newlines are not stripped here; the header
     // type checks use line[0]/line[1] directly, and process_colon_line's
     // whitespace tokeniser discards any trailing newline as inter-token space.
+    //
+    // inline_buf accumulates text from consecutive #> lines. When a non-#>
+    // header line (or end-of-headers) is encountered, any accumulated text is
+    // flushed as a HERESCRIPT<N> environment variable.
+    MaybeToken inline_buf;
+    maybe_token_init(&inline_buf, 256);
+
     while ((line_len = getline(&line, &line_cap, fp)) >= 0) {
         // Check if this is a header line? If not, we're done parsing headers and can move on to execution. 
         if (line_len < 2 || line[0] != '#') break;
+
+        // A non-#> header line ends any in-progress inline argument.
+        if (line[1] != '>' && inline_buf.is_token) {
+            char *value = maybe_token_take(&inline_buf);
+            char env_name[32];
+            snprintf(env_name, sizeof(env_name), "HERESCRIPT%d", rs.inline_arg_count++);
+            if (setenv(env_name, value, 1) != 0) {
+                perror("herescript: setenv");
+                free(value);
+                maybe_token_free(&inline_buf);
+                fclose(fp);
+                free(line);
+                return EXIT_GENERAL_ERROR;
+            }
+            free(value);
+        }
 
         switch (line[1]) {
             case '#':
@@ -693,10 +731,57 @@ int main(int argc, char **argv) {
             case ':':
                 run_state_process_colon_line(&rs, line);
                 break;
+            case '>':
+                // Inline quoted argument. The third character must be a space;
+                // content starts at offset 3. Consecutive #> lines are glued
+                // together preserving the line breaks between them.
+                if (line_len >= 3 && line[2] == ' ') {
+                    if (inline_buf.is_token) {
+                        // Glue to preceding #> line with a newline separator.
+                        maybe_token_append(&inline_buf, '\n');
+                    }
+                    // Append everything after the "#> " prefix, stripping the
+                    // trailing newline if present.
+                    const char *content = line + 3;
+                    size_t content_len = (size_t)line_len - 3;
+                    if (content_len > 0 && content[content_len - 1] == '\n') {
+                        content_len--;
+                    }
+                    for (size_t i = 0; i < content_len; i++) {
+                        maybe_token_append(&inline_buf, content[i]);
+                    }
+                    // Mark as a token even if the content is empty (e.g. "#> ").
+                    maybe_token_is_token(&inline_buf);
+                } else {
+                    fprintf(stderr, "herescript: malformed #> line (expected '#> ' prefix)\n");
+                    maybe_token_free(&inline_buf);
+                    fclose(fp);
+                    free(line);
+                    return EXIT_INVALID_HEADER;
+                }
+                break;
             default:
                 break;
         }
     }
+
+    // Flush any trailing inline argument that was not terminated by a
+    // non-#> header line.
+    if (inline_buf.is_token) {
+        char *value = maybe_token_take(&inline_buf);
+        char env_name[32];
+        snprintf(env_name, sizeof(env_name), "HERESCRIPT%d", rs.inline_arg_count++);
+        if (setenv(env_name, value, 1) != 0) {
+            perror("herescript: setenv");
+            free(value);
+            maybe_token_free(&inline_buf);
+            fclose(fp);
+            free(line);
+            return EXIT_GENERAL_ERROR;
+        }
+        free(value);
+    }
+    maybe_token_free(&inline_buf);
     
     free(line);
     fclose(fp);
