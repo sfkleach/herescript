@@ -97,7 +97,7 @@ static const char *getenv_or_fail(const char *name) {
 }
 
 // ============================================================================
-// New-style Header Line Parsing (#:, #|)
+// New-style Header Line Parsing (#:)
 // ============================================================================
 
 // A builder for the equivalent of Option<Token>. 
@@ -641,7 +641,6 @@ int main(int argc, char **argv) {
             case ':':
                 run_state_process_colon_line(&rs, line);
                 break;
-            case '|':
             default:
                 break;
         }
