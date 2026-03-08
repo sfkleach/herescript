@@ -1,11 +1,14 @@
 #!/bin/sh
-# install.sh — download and install the latest herescript release binary.
+# install.sh — download and install a herescript release binary.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/sfkleach/herescript/main/install.sh | sh
 #
 # By default the binary is installed to $HOME/.local/bin. Override with:
-#   INSTALL_DIR=/custom/bin sh install.sh
+#   INSTALL_DIR=/usr/local/bin sh install.sh
+#
+# To install a specific version (including pre-releases), set VERSION:
+#   VERSION=v0.1.0-rc1 sh install.sh
 
 set -e
 
@@ -24,7 +27,14 @@ case "$OS" in
         ;;
 esac
 
-URL="https://github.com/$REPO/releases/latest/download/$ASSET"
+# Build the download URL. When VERSION is set use the specific tag; otherwise
+# use the /releases/latest/ redirect (stable releases only).
+if [ -n "$VERSION" ]; then
+    URL="https://github.com/$REPO/releases/download/$VERSION/$ASSET"
+else
+    URL="https://github.com/$REPO/releases/latest/download/$ASSET"
+fi
+
 DEST="$INSTALL_DIR/herescript"
 
 # Create the install directory if it does not already exist.

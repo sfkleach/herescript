@@ -112,10 +112,15 @@ easiest way to install is with the bundled installer script:
 curl -fsSL https://raw.githubusercontent.com/sfkleach/herescript/main/install.sh | sh
 ```
 
-This detects your OS, downloads the correct binary from the latest release,
-and installs it to `~/.local/bin`. This directory is on `$PATH` in most modern
-distributions, but it is worth checking if `herescript` is not found after
-installation.
+This detects your OS, downloads the correct binary from the latest stable
+release, and installs it to `~/.local/bin`. This directory is on `$PATH` in
+most modern distributions, but it is worth checking if `herescript` is not
+found after installation.
+
+To install a specific version (including pre-releases), set `VERSION`:
+```
+curl -fsSL https://raw.githubusercontent.com/sfkleach/herescript/main/install.sh | VERSION=v0.1.0-rc1 sh
+```
 
 To install elsewhere, set `INSTALL_DIR`. Note that you will need write
 permission to the target directory:
