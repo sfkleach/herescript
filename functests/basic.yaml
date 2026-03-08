@@ -249,8 +249,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-whitespace.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-whitespace.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -268,8 +268,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-single-quotes.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-single-quotes.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -286,8 +286,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-dollar-single-quotes.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-dollar-single-quotes.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -309,9 +309,9 @@ tests:
       {
           "env": [
               "GREETING=hello",
-              "TARGET=world",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
               "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-var-substitution.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "TARGET=world"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -334,8 +334,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-param-zero.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-param-zero.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -354,8 +354,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-param-one.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-param-one.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -372,8 +372,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-param-out-of-range.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-param-out-of-range.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -389,8 +389,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-herescript-file.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-herescript-file.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -410,8 +410,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-all-params.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-all-params.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -431,8 +431,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-from-zero.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-from-zero.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -454,8 +454,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-range.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-range.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -474,8 +474,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-dollar-at.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-dollar-at.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -491,8 +491,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-empty.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-slice-empty.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript"
@@ -509,8 +509,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-colon-expansion.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-colon-expansion.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -527,8 +527,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-herescript-command.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-herescript-command.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -543,8 +543,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-double-quotes-whitespace.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-double-quotes-whitespace.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -564,8 +564,8 @@ tests:
       {
           "env": [
               "GREETING=hello",
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-double-quotes-interpolation.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-double-quotes-interpolation.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -581,8 +581,8 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-double-quotes-escapes.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-double-quotes-escapes.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -600,13 +600,138 @@ tests:
     output: |
       {
           "env": [
-              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-dollar-double-quotes.sh",
-              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-dollar-double-quotes.sh"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
               "hello\tworld",
               "back\\slash",
               "${BUILD_DIR}/new-style-args-dollar-double-quotes.sh"
+          ]
+      }
+
+  - name: binding-simple
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: MYVAR=hello ${0}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/binding-simple.sh",
+              "MYVAR=hello"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "${BUILD_DIR}/binding-simple.sh"
+          ]
+      }
+
+  - name: binding-multiple
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: FOO=bar BAZ=qux ${0}
+    output: |
+      {
+          "env": [
+              "BAZ=qux",
+              "FOO=bar",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/binding-multiple.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "${BUILD_DIR}/binding-multiple.sh"
+          ]
+      }
+
+  - name: binding-empty-value
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: EMPTY= ${0}
+    output: |
+      {
+          "env": [
+              "EMPTY=",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/binding-empty-value.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "${BUILD_DIR}/binding-empty-value.sh"
+          ]
+      }
+
+  - name: binding-quoted-value
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: GREETING="hello world" ${0}
+    output: |
+      {
+          "env": [
+              "GREETING=hello world",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/binding-quoted-value.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "${BUILD_DIR}/binding-quoted-value.sh"
+          ]
+      }
+
+  - name: binding-stops-at-non-binding
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: FOO=bar --verbose BAZ=not-a-binding ${0}
+    output: |
+      {
+          "env": [
+              "FOO=bar",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/binding-stops-at-non-binding.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--verbose",
+              "BAZ=not-a-binding",
+              "${BUILD_DIR}/binding-stops-at-non-binding.sh"
+          ]
+      }
+
+  - name: binding-escaped-with-quotes
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: 'FOO=bar' ${0}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/binding-escaped-with-quotes.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "FOO=bar",
+              "${BUILD_DIR}/binding-escaped-with-quotes.sh"
+          ]
+      }
+
+  - name: binding-with-interpolation
+    env:
+      BASE: /opt
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: MYPATH=${BASE}/lib ${0}
+    output: |
+      {
+          "env": [
+              "BASE=/opt",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/binding-with-interpolation.sh",
+              "MYPATH=/opt/lib"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "${BUILD_DIR}/binding-with-interpolation.sh"
           ]
       }
