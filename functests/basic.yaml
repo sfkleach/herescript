@@ -536,3 +536,77 @@ tests:
               "${BUILD_DIR}/new-style-args-herescript-command.sh"
           ]
       }
+  - name: new-style-args-double-quotes-whitespace
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: "hello world" "foo bar" ${0}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-double-quotes-whitespace.sh",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello world",
+              "foo bar",
+              "${BUILD_DIR}/new-style-args-double-quotes-whitespace.sh"
+          ]
+      }
+
+  - name: new-style-args-double-quotes-interpolation
+    env:
+      GREETING: hello
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: "--msg=${GREETING}" ${0}
+    output: |
+      {
+          "env": [
+              "GREETING=hello",
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-double-quotes-interpolation.sh",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "--msg=hello",
+              "${BUILD_DIR}/new-style-args-double-quotes-interpolation.sh"
+          ]
+      }
+
+  - name: new-style-args-double-quotes-escapes
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: "back\\slash" "dq\"here" "lit\$dollar" ${0}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-double-quotes-escapes.sh",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "back\\slash",
+              "dq\"here",
+              "lit$dollar",
+              "${BUILD_DIR}/new-style-args-double-quotes-escapes.sh"
+          ]
+      }
+
+  - name: new-style-args-dollar-double-quotes
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #: $"hello\tworld" $"back\\slash" ${0}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_FILE=${BUILD_DIR}/new-style-args-dollar-double-quotes.sh",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello\tworld",
+              "back\\slash",
+              "${BUILD_DIR}/new-style-args-dollar-double-quotes.sh"
+          ]
+      }
