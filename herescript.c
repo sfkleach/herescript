@@ -55,7 +55,7 @@ static void append_string_array(StringArray *arr, char *str) {
 
 // Returns the internal array of strings. The returned object is owned by the 
 // StringArray and should not be freed directly.
-static char **string_array_borrow_data(StringArray *arr) {
+static char **string_array_borrow_data(StringArray const * arr) {
     return arr->items;
 }
 
@@ -208,7 +208,7 @@ static void run_state_init(RunState *rs) {
 
 // Bind HERESCRIPT_FILE in the process environment so that the subprocess
 // inherits it and #: lines can reference it via the normal env-var path.
-static void run_state_bind_herescript_file(RunState *rs) {
+static void run_state_bind_herescript_file(RunState const * rs) {
     if (setenv("HERESCRIPT_FILE", rs->script_path, 1) != 0) {
         perror("herescript: setenv HERESCRIPT_FILE");
         exit(EXIT_GENERAL_ERROR);
@@ -217,7 +217,7 @@ static void run_state_bind_herescript_file(RunState *rs) {
 
 // Bind HERESCRIPT_COMMAND in the process environment so that the subprocess
 // inherits the interpreter name from the shebang line.
-static void run_state_bind_herescript_command(RunState *rs) {
+static void run_state_bind_herescript_command(RunState const * rs) {
     if (setenv("HERESCRIPT_COMMAND", rs->executable, 1) != 0) {
         perror("herescript: setenv HERESCRIPT_COMMAND");
         exit(EXIT_GENERAL_ERROR);
@@ -226,7 +226,7 @@ static void run_state_bind_herescript_command(RunState *rs) {
 
 // Build a NULL-terminated argv array from rs->executable followed by all
 // accumulated arguments, then exec the interpreter. Does not return on success.
-static int run_state_exec(RunState *rs) {
+static int run_state_exec(RunState * rs) {
     // Capacity is count + 1 for the executable + 1 for the NULL sentinel.
     StringArray argv_arr;
     init_string_array(&argv_arr, rs->arguments.count + 2);
@@ -246,7 +246,7 @@ static int run_state_exec(RunState *rs) {
     return EXIT_EXEC_FAILURE;
 }
 
-static void run_state_flush_maybe_token(RunState *rs, MaybeToken *buf) {
+static void run_state_flush_maybe_token(RunState * rs, MaybeToken *buf) {
     // Flush any partially-built token that precedes the slice.
     if (buf->is_token) {
         append_string_array(&rs->arguments, maybe_token_take(buf));
@@ -258,7 +258,7 @@ static void run_state_flush_maybe_token(RunState *rs, MaybeToken *buf) {
 // user-supplied arguments; parameters beyond that expand to empty strings.
 // Any partially-accumulated content in buf is flushed as a separate argument
 // before the slice elements are emitted.
-static void expand_slice(RunState *rs, MaybeToken *buf, int slice_a, int slice_b) {
+static void expand_slice(RunState * rs, MaybeToken *buf, int slice_a, int slice_b) {
     run_state_flush_maybe_token(rs, buf);
     for (int i = slice_a; i < slice_b; i++) {
         const char *value;
@@ -276,7 +276,7 @@ static void expand_slice(RunState *rs, MaybeToken *buf, int slice_a, int slice_b
 // Parse and expand a slice notation string of the form A:B (already extracted
 // from ${A:B}, with the colon guaranteed present). A defaults to 0; B defaults
 // to total argc. Both bounds are clamped to the valid range. Does not free name.
-static void expand_slice_notation(RunState *rs, MaybeToken *buf, char *name) {
+static void expand_slice_notation(RunState * rs, MaybeToken *buf, char const * name) {
     int total_argc = rs->user_param_count + 1;
     int slice_a = 0;
     int slice_b = total_argc;
@@ -353,6 +353,27 @@ static void scan_dollar_single_quote(MaybeToken *b, const char **cursor) {
     }
 }
 
+// Parse a $"..." escape-quoted span. Called after consuming the $" prefix.
+// Full backslash escapes are processed; there is no variable interpolation.
+// Advances *cursor past the closing double quote.
+static void scan_dollar_double_quote(MaybeToken *b, const char **cursor) {
+    while (**cursor && **cursor != '"') {
+        if (**cursor == '\\' && *(*cursor + 1)) {
+            (*cursor)++;  // Skip backslash.
+            maybe_token_append_escape(b, *(*cursor)++);
+        } else {
+            maybe_token_append(b, *(*cursor)++);
+        }
+    }
+    if (**cursor == '"') {
+        (*cursor)++;  // Skip closing quote.
+    } else {
+        fprintf(stderr, "herescript: unterminated $\" string in #: line\n");
+        maybe_token_free(b);
+        exit(EXIT_INVALID_HEADER);
+    }
+}
+
 // Parse a '...' plain single-quoted span. Called after consuming the opening quote.
 // No escapes or substitutions are performed; content is appended literally.
 // Advances *p past the closing single quote.
@@ -385,13 +406,45 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
     char *name = strndup_safe(name_start, (size_t)(*cursor - name_start));
     (*cursor)++;  // Skip }.
 
-    char *colon = strchr(name, ':');
+    char const * colon = strchr(name, ':');
     if (colon != NULL) {
         expand_slice_notation(rs, buf, name);
     } else {
         expand_scalar_name(rs, buf, name);
     }
     free(name);
+}
+
+// Parse a "..." double-quoted span. Called after consuming the opening quote.
+// Supports ${...} variable interpolation and minimal backslash escapes: \\ \" \$.
+// All other backslash sequences are passed through literally.
+// Advances *cursor past the closing double quote.
+static void scan_double_quote(RunState *rs, MaybeToken *buf, const char **cursor) {
+    maybe_token_is_token(buf);  // Empty double quotes still produce a token.
+    while (**cursor && **cursor != '"') {
+        if (**cursor == '$' && *((*cursor) + 1) == '{') {
+            (*cursor) += 2;
+            expand_dollar_brace(rs, buf, cursor);
+        } else if (**cursor == '\\' && *((*cursor) + 1) == '\\') {
+            (*cursor)++;  // Skip backslash.
+            maybe_token_append(buf, *(*cursor)++);
+        } else if (**cursor == '\\' && *((*cursor) + 1) == '"') {
+            (*cursor)++;  // Skip backslash.
+            maybe_token_append(buf, *(*cursor)++);
+        } else if (**cursor == '\\' && *((*cursor) + 1) == '$') {
+            (*cursor)++;  // Skip backslash, emit literal $.
+            maybe_token_append(buf, *(*cursor)++);
+        } else {
+            maybe_token_append(buf, *(*cursor)++);
+        }
+    }
+    if (**cursor == '"') {
+        (*cursor)++;  // Skip closing quote.
+    } else {
+        fprintf(stderr, "herescript: unterminated double quote in #: line\n");
+        maybe_token_free(buf);
+        exit(EXIT_INVALID_HEADER);
+    }
 }
 
 // Process a #: arguments line using shell-like tokenisation. Tokens are
@@ -417,12 +470,18 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
             } else if (*cursor == '$' && *(cursor + 1) == '\'') {
                 cursor += 2;
                 scan_dollar_single_quote(&buf, &cursor);
+            } else if (*cursor == '$' && *(cursor + 1) == '"') {
+                cursor += 2;
+                scan_dollar_double_quote(&buf, &cursor);
             } else if (*cursor == '$' && *(cursor + 1) == '{') {
                 cursor += 2;
                 expand_dollar_brace(rs, &buf, &cursor);
             } else if (*cursor == '\'') {
                 cursor++;
                 scan_single_quote(&buf, &cursor);
+            } else if (*cursor == '"') {
+                cursor++;
+                scan_double_quote(rs, &buf, &cursor);
             } else {
                 maybe_token_append(&buf, *cursor++);
             }
