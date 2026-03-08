@@ -382,8 +382,21 @@ static void scan_single_quote(MaybeToken *b, const char **cursor) {
     }
 }
 
+// Return true when name (of length name_len) is a valid identifier: starts
+// with a letter or underscore, followed by zero or more alphanumerics or
+// underscores.
+static bool is_identifier(const char *name, size_t name_len) {
+    if (name_len == 0) return false;
+    if (!isalpha((unsigned char)name[0]) && name[0] != '_') return false;
+    for (size_t i = 1; i < name_len; i++) {
+        if (!isalnum((unsigned char)name[i]) && name[i] != '_') return false;
+    }
+    return true;
+}
+
 // Parse and expand a ${...} substitution. Called after consuming the ${ prefix.
-// Handles both slice syntax (${A:B}) and scalar substitution (${N} or ${NAME}).
+// Handles inline defaults (${NAME-VALUE} and ${NAME:=VALUE}), slice syntax
+// (${A:B}), and scalar substitution (${N} or ${NAME}).
 // Advances *p past the closing brace.
 static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **cursor) {
     const char *name_start = *cursor;
@@ -398,6 +411,39 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
     char *name = strndup_safe(name_start, (size_t)(*cursor - name_start));
     (*cursor)++;  // Skip }.
 
+    // Check for ${NAME-VALUE} (dash) default syntax.
+    char *dash = strchr(name, '-');
+    if (dash != NULL && is_identifier(name, (size_t)(dash - name))) {
+        *dash = '\0';
+        const char *value = getenv(name);
+        if (value == NULL) {
+            value = dash + 1;
+        }
+        maybe_token_is_token(buf);
+        for (const char *v = value; *v; v++) {
+            maybe_token_append(buf, *v);
+        }
+        free(name);
+        return;
+    }
+
+    // Check for ${NAME:=VALUE} (colon-equals) default syntax.
+    char *colon_eq = strstr(name, ":=");
+    if (colon_eq != NULL && is_identifier(name, (size_t)(colon_eq - name))) {
+        *colon_eq = '\0';
+        const char *value = getenv(name);
+        if (value == NULL) {
+            value = colon_eq + 2;
+        }
+        maybe_token_is_token(buf);
+        for (const char *v = value; *v; v++) {
+            maybe_token_append(buf, *v);
+        }
+        free(name);
+        return;
+    }
+
+    // Fall through to slice or scalar.
     char const * colon = strchr(name, ':');
     if (colon != NULL) {
         expand_slice_notation(rs, buf, name);
@@ -441,7 +487,7 @@ static void scan_double_quote(RunState *rs, MaybeToken *buf, const char **cursor
 
 // Return true when cursor points to a shell-style binding: an identifier
 // (letter or underscore, followed by alphanumerics/underscores) then either
-// '=' (unconditional) or ':-' (conditional). On match, *sep_out points at the
+// '=' (unconditional) or ':=' (conditional). On match, *sep_out points at the
 // '=' or ':', and *conditional is set accordingly.
 static bool is_binding_start(const char *cursor, const char **sep_out, bool *conditional) {
     if (!isalpha((unsigned char)*cursor) && *cursor != '_') return false;
@@ -454,7 +500,7 @@ static bool is_binding_start(const char *cursor, const char **sep_out, bool *con
         *conditional = false;
         return true;
     }
-    if (*p == ':' && *(p + 1) == '-') {
+    if (*p == ':' && *(p + 1) == '=') {
         *sep_out = p;
         *conditional = true;
         return true;
@@ -483,14 +529,14 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
         }
         if (!*cursor) break;
 
-        // While still in the binding prefix, check for NAME=... or NAME:-... syntax.
+        // While still in the binding prefix, check for NAME=... or NAME:=... syntax.
         char *binding_name = NULL;
         bool binding_conditional = false;
         if (binding_prefix) {
             const char *sep;
             if (is_binding_start(cursor, &sep, &binding_conditional)) {
                 binding_name = strndup_safe(cursor, (size_t)(sep - cursor));
-                // Advance past '=' or ':-'.
+                // Advance past '=' or ':='.
                 cursor = sep + (binding_conditional ? 2 : 1);
             }
         }
@@ -525,7 +571,7 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
 
         if (binding_name) {
             // Collect the value and bind it as an environment variable.
-            // Conditional bindings (NAME:-VALUE) only take effect when NAME is unset.
+            // Conditional bindings (NAME:=VALUE) only take effect when NAME is unset.
             char *value;
             if (buf.is_token) {
                 value = maybe_token_take(&buf);
