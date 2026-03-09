@@ -482,6 +482,14 @@ static void expand_dollar_bare(RunState *rs, MaybeToken *buf, const char **curso
     free(name);
 }
 
+static bool is_name_char(const char ch) {
+    return(
+        isalpha((unsigned char)ch) ||
+        ch == '_' ||
+        isdigit((unsigned char)ch)
+    );
+}
+
 // Parse a "..." double-quoted span. Called after consuming the opening quote.
 // Supports ${...} variable interpolation and minimal backslash escapes: \\ \" \$.
 // All other backslash sequences are passed through literally.
@@ -492,10 +500,7 @@ static void scan_double_quote(RunState *rs, MaybeToken *buf, const char **cursor
         if (**cursor == '$' && *((*cursor) + 1) == '{') {
             (*cursor) += 2;
             expand_dollar_brace(rs, buf, cursor);
-        } else if (**cursor == '$' &&
-                   (isalpha((unsigned char)*((*cursor) + 1)) ||
-                    *((*cursor) + 1) == '_' ||
-                    isdigit((unsigned char)*((*cursor) + 1)))) {
+        } else if (**cursor == '$' && is_name_char((unsigned char)*((*cursor) + 1))) {
             // Bare $NAME or $<digits> — greedy bash-style expansion.
             (*cursor)++;
             expand_dollar_bare(rs, buf, cursor);
