@@ -453,6 +453,14 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
     free(name);
 }
 
+static bool is_variable_char(char c) {
+    return(
+        isalpha((unsigned char)c) ||
+        c == '_' ||
+        isdigit((unsigned char)c)
+    );
+}
+
 // Parse a "..." double-quoted span. Called after consuming the opening quote.
 // Supports ${...} variable interpolation and minimal backslash escapes: \\ \" \$.
 // Also supports bare $NAME and $<digits> using greedy bash-style matching.
@@ -473,7 +481,7 @@ static void expand_dollar_bare(RunState *rs, MaybeToken *buf, const char **curso
         // Greedy identifier: starts with letter or underscore, continues with
         // alphanumerics or underscores.
         (*cursor)++;  // The first character has already been validated by the caller.
-        while (isalnum((unsigned char)**cursor) || **cursor == '_') {
+        while (is_variable_char((unsigned char)**cursor)) {
             (*cursor)++;
         }
     }
@@ -497,20 +505,21 @@ static bool is_name_char(const char ch) {
 static void scan_double_quote(RunState *rs, MaybeToken *buf, const char **cursor) {
     maybe_token_is_token(buf);  // Empty double quotes still produce a token.
     while (**cursor && **cursor != '"') {
-        if (**cursor == '$' && *((*cursor) + 1) == '{') {
+        const char ch = *((*cursor) + 1);
+        if (**cursor == '$' && ch == '{') {
             (*cursor) += 2;
             expand_dollar_brace(rs, buf, cursor);
         } else if (**cursor == '$' && is_name_char((unsigned char)*((*cursor) + 1))) {
             // Bare $NAME or $<digits> — greedy bash-style expansion.
             (*cursor)++;
             expand_dollar_bare(rs, buf, cursor);
-        } else if (**cursor == '\\' && *((*cursor) + 1) == '\\') {
+        } else if (**cursor == '\\' && ch == '\\') {
             (*cursor)++;  // Skip backslash.
             maybe_token_append(buf, *(*cursor)++);
-        } else if (**cursor == '\\' && *((*cursor) + 1) == '"') {
+        } else if (**cursor == '\\' && ch == '"') {
             (*cursor)++;  // Skip backslash.
             maybe_token_append(buf, *(*cursor)++);
-        } else if (**cursor == '\\' && *((*cursor) + 1) == '$') {
+        } else if (**cursor == '\\' && ch == '$') {
             (*cursor)++;  // Skip backslash, emit literal $.
             maybe_token_append(buf, *(*cursor)++);
         } else {
