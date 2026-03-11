@@ -18,8 +18,6 @@ extern char **environ;
 
 
 
-
-
 // ============================================================================
 // Dynamic Array Utilities
 // ============================================================================
@@ -382,14 +380,29 @@ static void scan_single_quote(MaybeToken *b, const char **cursor) {
     }
 }
 
+static bool is_first_name_char(char c) {
+    return(
+        isalpha((unsigned char)c) ||
+        c == '_'
+    );
+}
+
+static bool is_name_char(char c) {
+    return(
+        isalpha((unsigned char)c) ||
+        c == '_' ||
+        isdigit((unsigned char)c)
+    );
+}
+
 // Return true when name (of length name_len) is a valid identifier: starts
 // with a letter or underscore, followed by zero or more alphanumerics or
 // underscores.
 static bool is_identifier(const char *name, size_t name_len) {
     if (name_len == 0) return false;
-    if (!isalpha((unsigned char)name[0]) && name[0] != '_') return false;
+    if (!is_first_name_char(name[0])) return false;
     for (size_t i = 1; i < name_len; i++) {
-        if (!isalnum((unsigned char)name[i]) && name[i] != '_') return false;
+        if (!is_name_char(name[i])) return false;
     }
     return true;
 }
@@ -453,13 +466,7 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
     free(name);
 }
 
-static bool is_variable_char(char c) {
-    return(
-        isalpha((unsigned char)c) ||
-        c == '_' ||
-        isdigit((unsigned char)c)
-    );
-}
+
 
 // Parse a "..." double-quoted span. Called after consuming the opening quote.
 // Supports ${...} variable interpolation and minimal backslash escapes: \\ \" \$.
@@ -481,7 +488,7 @@ static void expand_dollar_bare(RunState *rs, MaybeToken *buf, const char **curso
         // Greedy identifier: starts with letter or underscore, continues with
         // alphanumerics or underscores.
         (*cursor)++;  // The first character has already been validated by the caller.
-        while (is_variable_char((unsigned char)**cursor)) {
+        while (is_name_char((unsigned char)**cursor)) {
             (*cursor)++;
         }
     }
@@ -490,13 +497,6 @@ static void expand_dollar_bare(RunState *rs, MaybeToken *buf, const char **curso
     free(name);
 }
 
-static bool is_name_char(const char ch) {
-    return(
-        isalpha((unsigned char)ch) ||
-        ch == '_' ||
-        isdigit((unsigned char)ch)
-    );
-}
 
 // Parse a "..." double-quoted span. Called after consuming the opening quote.
 // Supports ${...} variable interpolation and minimal backslash escapes: \\ \" \$.
@@ -540,9 +540,9 @@ static void scan_double_quote(RunState *rs, MaybeToken *buf, const char **cursor
 // '=' (unconditional) or ':=' (conditional). On match, *sep_out points at the
 // '=' or ':', and *conditional is set accordingly.
 static bool is_binding_start(const char *cursor, const char **sep_out, bool *conditional) {
-    if (!isalpha((unsigned char)*cursor) && *cursor != '_') return false;
+    if (!is_first_name_char(*cursor)) return false;
     const char *p = cursor + 1;
-    while (isalnum((unsigned char)*p) || *p == '_') {
+    while (is_name_char(*p)) {
         p++;
     }
     if (*p == '=') {
@@ -608,10 +608,7 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
             } else if (*cursor == '$' && *(cursor + 1) == '{') {
                 cursor += 2;
                 expand_dollar_brace(rs, &buf, &cursor);
-            } else if (*cursor == '$' &&
-                       (isalpha((unsigned char)*(cursor + 1)) ||
-                        *(cursor + 1) == '_' ||
-                        isdigit((unsigned char)*(cursor + 1)))) {
+            } else if (*cursor == '$' && is_name_char(*(cursor + 1))) {
                 // Bare $NAME or $<digits> — greedy bash-style expansion.
                 cursor++;
                 expand_dollar_bare(rs, &buf, &cursor);
@@ -660,12 +657,6 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
 // ============================================================================
 
 int main(int argc, char **argv) {
-
-    // for (int i = 0; i < argc; i++) {
-    //     printf("Debug: Initial argv[%d]: %s\n", i, argv[i]);
-    // }
-
-
     if (argc < 2) {
         fprintf(stderr, "herescript: no script specified\n");
         fprintf(stderr, "  Hint: This program is meant to be used as a shebang interpreter.\n");
