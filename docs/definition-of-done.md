@@ -1,4 +1,4 @@
-# "Definition of Done"
+# Definition of Done
 
 Our definition of done is focussed on general tasks that need to be completed
 as part of every story.
