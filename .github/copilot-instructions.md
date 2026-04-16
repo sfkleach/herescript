@@ -2,7 +2,7 @@
 
 `herescript` is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism. 
 
-## Collaboration Guidelines
+## Collaboration Style
 
 When providing technical assistance:
 
