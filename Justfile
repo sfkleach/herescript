@@ -1,7 +1,10 @@
 default:
     @just --list
 
-test: functest lint
+test: functest unittest lint
+
+unittest:
+    make unittest
 
 lint:
     cppcheck --library=posix --suppress=missingIncludeSystem --suppress=checkersReport --enable=all --error-exitcode=1 herescript.c test-herescript.c

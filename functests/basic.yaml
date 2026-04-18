@@ -710,7 +710,8 @@ tests:
       {
           "env": [
               "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
-              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-dash-unset.sh"
+              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-dash-unset.sh",
+              "UNSET_VAR_XYZ=fallback"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -747,7 +748,8 @@ tests:
       {
           "env": [
               "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
-              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-coloneq-unset.sh"
+              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-coloneq-unset.sh",
+              "UNSET_VAR_XYZ=fallback"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -784,7 +786,8 @@ tests:
       {
           "env": [
               "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
-              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-empty-value.sh"
+              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-empty-value.sh",
+              "UNSET_VAR_XYZ="
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",
@@ -801,7 +804,8 @@ tests:
       {
           "env": [
               "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
-              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-in-double-quotes.sh"
+              "HERESCRIPT_FILE=${BUILD_DIR}/inline-default-in-double-quotes.sh",
+              "UNSET_VAR_XYZ=default"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript",

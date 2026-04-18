@@ -16,6 +16,15 @@ extern char **environ;
 #define EXIT_INVALID_HEADER 4
 #define EXIT_EXEC_FAILURE 5
 
+// Maximum length accepted for the shebang line. The shebang is structurally
+// bounded by #! + herescript-path + space + executable-path, so 3 + 2*PATH_MAX
+// is a tight upper bound. This also defends against accidentally running
+// herescript on a non-script file (e.g. a binary with no early newline).
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+#define MAX_LINE_LENGTH (3 + 2 * PATH_MAX)
+
 
 
 // ============================================================================
@@ -106,81 +115,81 @@ typedef struct {
     size_t cap;
 } MaybeToken;
 
-static void maybe_token_init(MaybeToken *b, size_t initial_cap) {
-    b->is_token = false;
-    b->data = malloc(initial_cap);
-    if (!b->data) {
+static void maybe_token_init(MaybeToken *mt, size_t initial_cap) {
+    mt->is_token = false;
+    mt->data = malloc(initial_cap);
+    if (!mt->data) {
         perror("malloc");
         exit(EXIT_GENERAL_ERROR);
     }
-    b->len = 0;
-    b->cap = initial_cap;
+    mt->len = 0;
+    mt->cap = initial_cap;
 }
 
-static void maybe_token_append(MaybeToken *b, char c) {
-    if (b->len + 1 >= b->cap) {
-        b->cap *= 2;
-        b->data = realloc(b->data, b->cap);
-        if (!b->data) {
+static void maybe_token_append(MaybeToken *mt, char c) {
+    if (mt->len + 1 >= mt->cap) {
+        mt->cap *= 2;
+        mt->data = realloc(mt->data, mt->cap);
+        if (!mt->data) {
             perror("realloc");
             exit(EXIT_GENERAL_ERROR);
         }
     }
-    b->data[b->len++] = c;
-    b->is_token = true;
+    mt->data[mt->len++] = c;
+    mt->is_token = true;
 }
 
 // Returns the accumulated token as a strdup'd NUL-terminated string.
-static char *maybe_token_take(MaybeToken *b) {
-    b->data[b->len] = '\0';
-    char *s = strdup_safe(b->data);
-    b->len = 0;
-    b->is_token = false;
+static char *maybe_token_take(MaybeToken *mt) {
+    mt->data[mt->len] = '\0';
+    char *s = strdup_safe(mt->data);
+    mt->len = 0;
+    mt->is_token = false;
     return s;
 }
 
-static void maybe_token_free(MaybeToken *b) {
-    free(b->data);
-    b->data = NULL;
+static void maybe_token_free(MaybeToken *mt) {
+    free(mt->data);
+    mt->data = NULL;
 }
 
 // Append the character produced by a backslash escape sequence. The argument
 // is the character immediately following the backslash. Unrecognised escapes
 // emit the backslash and the character literally.
-static void maybe_token_append_escape(MaybeToken *b, char c) {
-    b->is_token = true;
+static void maybe_token_append_escape(MaybeToken *mt, char c) {
+    mt->is_token = true;
     switch (c) {
         case '\\':
-            maybe_token_append(b, '\\');
+            maybe_token_append(mt, '\\');
             break;
         case '\'':
-            maybe_token_append(b, '\'');
+            maybe_token_append(mt, '\'');
             break;
         case '"':
-            maybe_token_append(b, '"');
+            maybe_token_append(mt, '"');
             break;
         case 's':
-            maybe_token_append(b, ' ');
+            maybe_token_append(mt, ' ');
             break;
         case 'n':
-            maybe_token_append(b, '\n');
+            maybe_token_append(mt, '\n');
             break;
         case 't':
-            maybe_token_append(b, '\t');
+            maybe_token_append(mt, '\t');
             break;
         case 'r':
-            maybe_token_append(b, '\r');
+            maybe_token_append(mt, '\r');
             break;
         default:
-            maybe_token_append(b, '\\');
-            maybe_token_append(b, c);
+            maybe_token_append(mt, '\\');
+            maybe_token_append(mt, c);
             break;
     }
 }
 
 // Mark the builder as containing a token, even if no characters have been appended.
-static void maybe_token_is_token(MaybeToken *b) {
-    b->is_token = true;
+static void maybe_token_is_token(MaybeToken *mt) {
+    mt->is_token = true;
 }
 
 // ============================================================================
@@ -282,10 +291,24 @@ static void expand_slice_notation(RunState * rs, MaybeToken *buf, char const * n
     int slice_b = total_argc;
     char *colon = strchr(name, ':');
     *colon = '\0';  // Split the name at the colon.
-    if (*name        != '\0') {
+    if (*name != '\0') {
+        // Validate that the LHS is a non-negative integer before converting.
+        for (const char *p = name; *p; p++) {
+            if (!isdigit((unsigned char)*p)) {
+                fprintf(stderr, "herescript: slice index '%s' is not a non-negative integer.\n", name);
+                exit(EXIT_GENERAL_ERROR);
+            }
+        }
         slice_a = atoi(name);
     }
     if (*(colon + 1) != '\0') {
+        // Validate that the RHS is a non-negative integer before converting.
+        for (const char *p = colon + 1; *p; p++) {
+            if (!isdigit((unsigned char)*p)) {
+                fprintf(stderr, "herescript: slice index '%s' is not a non-negative integer.\n", colon + 1);
+                exit(EXIT_GENERAL_ERROR);
+            }
+        }
         slice_b = atoi(colon + 1);
     }
     // Clamp to valid range.
@@ -338,44 +361,44 @@ static void expand_scalar_name(RunState *rs, MaybeToken *buf, const char *name) 
 
 // Common implementation for $'...' and $"..." escape-quoted spans.
 // closing_quote: the character to terminate on (' or ").
-static void scan_dollar(MaybeToken *b, const char **cursor, char closing_quote) {
+static void scan_dollar(MaybeToken *mt, const char **cursor, char closing_quote) {
     while (**cursor && **cursor != closing_quote) {
         if (**cursor == '\\' && *(*cursor + 1)) {
             (*cursor)++;  // Skip backslash.
-            maybe_token_append_escape(b, *(*cursor)++);
+            maybe_token_append_escape(mt, *(*cursor)++);
         } else {
-            maybe_token_append(b, *(*cursor)++);
+            maybe_token_append(mt, *(*cursor)++);
         }
     }
     if (**cursor == closing_quote) {
         (*cursor)++;  // Skip closing quote.
     } else {
         fprintf(stderr, "herescript: unterminated $%c string in #: line\n", closing_quote);
-        maybe_token_free(b);
+        maybe_token_free(mt);
         exit(EXIT_INVALID_HEADER);
     }
 }
 
-static void scan_dollar_single_quote(MaybeToken *b, const char **cursor) {
-    scan_dollar(b, cursor, '\'');
+static void scan_dollar_single_quote(MaybeToken *mt, const char **cursor) {
+    scan_dollar(mt, cursor, '\'');
 }
 
-static void scan_dollar_double_quote(MaybeToken *b, const char **cursor) {
-    scan_dollar(b, cursor, '"');
+static void scan_dollar_double_quote(MaybeToken *mt, const char **cursor) {
+    scan_dollar(mt, cursor, '"');
 }
 
 // Parse a '...' plain single-quoted span. Called after consuming the opening quote.
 // No escapes or substitutions are performed; content is appended literally.
 // Advances *p past the closing single quote.
-static void scan_single_quote(MaybeToken *b, const char **cursor) {
+static void scan_single_quote(MaybeToken *mt, const char **cursor) {
     while (**cursor && **cursor != '\'') {
-        maybe_token_append(b, *(*cursor)++);
+        maybe_token_append(mt, *(*cursor)++);
     }
     if (**cursor == '\'') {
         (*cursor)++;  // Skip closing quote.
     } else {
         fprintf(stderr, "herescript: unterminated single quote in #: line\n");
-        maybe_token_free(b);
+        maybe_token_free(mt);
         exit(EXIT_INVALID_HEADER);
     }
 }
@@ -431,6 +454,12 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
         const char *value = getenv(name);
         if (value == NULL) {
             value = dash + 1;
+            if (setenv(name, value, 1) != 0) {
+                perror("herescript: setenv");
+                free(name);
+                maybe_token_free(buf);
+                exit(EXIT_GENERAL_ERROR);
+            }
         }
         maybe_token_is_token(buf);
         for (const char *v = value; *v; v++) {
@@ -447,6 +476,12 @@ static void expand_dollar_brace(RunState *rs, MaybeToken *buf, const char **curs
         const char *value = getenv(name);
         if (value == NULL) {
             value = colon_eq + 2;
+            if (setenv(name, value, 1) != 0) {
+                perror("herescript: setenv");
+                free(name);
+                maybe_token_free(buf);
+                exit(EXIT_GENERAL_ERROR);
+            }
         }
         maybe_token_is_token(buf);
         for (const char *v = value; *v; v++) {
@@ -488,7 +523,7 @@ static void expand_dollar_bare(RunState *rs, MaybeToken *buf, const char **curso
         // Greedy identifier: starts with letter or underscore, continues with
         // alphanumerics or underscores.
         (*cursor)++;  // The first character has already been validated by the caller.
-        while (is_name_char((unsigned char)**cursor)) {
+        while (is_name_char(**cursor)) {
             (*cursor)++;
         }
     }
@@ -502,25 +537,22 @@ static void expand_dollar_bare(RunState *rs, MaybeToken *buf, const char **curso
 // Supports ${...} variable interpolation and minimal backslash escapes: \\ \" \$.
 // All other backslash sequences are passed through literally.
 // Advances *cursor past the closing double quote.
+// Precondition: *cursor is non-NULL and points into a NUL-terminated string.
 static void scan_double_quote(RunState *rs, MaybeToken *buf, const char **cursor) {
     maybe_token_is_token(buf);  // Empty double quotes still produce a token.
     while (**cursor && **cursor != '"') {
+        // Peek one character ahead. This is safe because **cursor is non-NUL,
+        // so (*cursor)+1 is at worst the NUL terminator of the string.
         const char ch = *((*cursor) + 1);
         if (**cursor == '$' && ch == '{') {
             (*cursor) += 2;
             expand_dollar_brace(rs, buf, cursor);
-        } else if (**cursor == '$' && is_name_char((unsigned char)*((*cursor) + 1))) {
+        } else if (**cursor == '$' && is_name_char(*((*cursor) + 1))) {
             // Bare $NAME or $<digits> — greedy bash-style expansion.
             (*cursor)++;
             expand_dollar_bare(rs, buf, cursor);
-        } else if (**cursor == '\\' && ch == '\\') {
+        } else if (**cursor == '\\' && (ch == '\\' || ch == '"' || ch == '$')) {
             (*cursor)++;  // Skip backslash.
-            maybe_token_append(buf, *(*cursor)++);
-        } else if (**cursor == '\\' && ch == '"') {
-            (*cursor)++;  // Skip backslash.
-            maybe_token_append(buf, *(*cursor)++);
-        } else if (**cursor == '\\' && ch == '$') {
-            (*cursor)++;  // Skip backslash, emit literal $.
             maybe_token_append(buf, *(*cursor)++);
         } else {
             maybe_token_append(buf, *(*cursor)++);
@@ -656,6 +688,7 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
 // Main Program
 // ============================================================================
 
+#ifndef HERESCRIPT_UNIT_TEST
 int main(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr, "herescript: no script specified\n");
@@ -729,6 +762,14 @@ int main(int argc, char **argv) {
     size_t line_cap = 0;
     ssize_t line_len = getline(&line, &line_cap, fp);
     
+    if (line_len > MAX_LINE_LENGTH) {
+        fprintf(stderr, "herescript: shebang line too long (%zd bytes, limit %d)\n",
+                line_len, MAX_LINE_LENGTH);
+        fclose(fp);
+        free(line);
+        return EXIT_MALFORMED_SHEBANG;
+    }
+
     if (line_len < 0) {
         fprintf(stderr, "herescript: empty script file\n");
         fprintf(stderr, "  Hint: Script must start with a shebang line.\n");
@@ -889,3 +930,4 @@ int main(int argc, char **argv) {
     // explicit teardown would be pure ceremony with no practical effect.
     return run_state_exec(&rs);
 }
+#endif // HERESCRIPT_UNIT_TEST

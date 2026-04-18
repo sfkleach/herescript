@@ -1,4 +1,4 @@
-# Add Github Workflows
+# Add GitHub Workflows
 
 We need to add three GitHub workflows. 
 
