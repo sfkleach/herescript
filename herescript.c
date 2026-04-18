@@ -697,10 +697,10 @@ int main(int argc, char **argv) {
             "\n"
             "Herescript is a modern, structured interpreter launcher designed to extend\n"
             "the limited Unix shebang mechanism. Scripts begin with\n"
-            "'#!/usr/bin/herescript EXECUTABLE' and use header lines to build the argument\n"
+            "'#!/usr/local/bin/herescript EXECUTABLE' and use header lines to build the argument\n"
             "list. For example:\n"
             "\n"
-            "    #!/usr/bin/herescript python3\n"
+            "    #!/usr/local/bin/herescript python3\n"
             "    ## A comment line (discarded).\n"
             "    #: --verbose ${0}\n"
             "\n"
@@ -804,7 +804,7 @@ int main(int argc, char **argv) {
     
     if (strlen(exec_part) == 0) {
         fprintf(stderr, "herescript: no executable specified in shebang\n");
-        fprintf(stderr, "  Hint: The shebang must specify an executable after #!/usr/bin/herescript.\n");
+        fprintf(stderr, "  Hint: The shebang must specify an executable after #!/usr/local/bin/herescript.\n");
         fclose(fp);
         free(line);
         return EXIT_MALFORMED_SHEBANG;
@@ -813,7 +813,7 @@ int main(int argc, char **argv) {
     // Check for options (space in executable).
     if (strchr(exec_part, ' ') || strchr(exec_part, '\t')) {
         fprintf(stderr, "herescript: shebang contains options, which are not allowed\n");
-        fprintf(stderr, "  Expected: #!/usr/bin/herescript <executable>\n");
+        fprintf(stderr, "  Expected: #!/usr/local/bin/herescript <executable>\n");
         fprintf(stderr, "  Got: %s\n", line);
         fprintf(stderr, "  Hint: Options to the executable should be specified in header lines,\n");
         fprintf(stderr, "        not in the shebang line.\n");

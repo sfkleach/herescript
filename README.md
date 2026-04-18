@@ -29,7 +29,7 @@ Scripts begin with a standard Unix shebang, followed by a header block of
 structured comment lines:
 
 ```
-#!/usr/bin/herescript python3
+#!/usr/local/bin/herescript python3
 ## Run with verbose output and a fixed library path.
 #: PYTHONPATH=/usr/local/lib
 #: LOG_LEVEL:="info"
@@ -98,7 +98,7 @@ A run of consecutive `#>` lines is collected into a single multi-line string
 A `#:` line between two `#>` runs forces a break, starting a new argument.
 
 ```
-#!/usr/bin/herescript python3
+#!/usr/local/bin/herescript python3
 #> first line of argument 0
 #> second line of argument 0
 #:
@@ -160,7 +160,7 @@ sudo make install
 ## Usage
 
 ```
-#!/usr/bin/herescript <executable> [options]
+#!/usr/local/bin/herescript <executable> [options]
 ```
 
 When invoked directly:
