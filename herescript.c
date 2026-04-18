@@ -690,15 +690,7 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
 
 #ifndef HERESCRIPT_UNIT_TEST
 int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "herescript: no script specified\n");
-        fprintf(stderr, "  Hint: This program is meant to be used as a shebang interpreter.\n");
-        return EXIT_GENERAL_ERROR;
-    }
-
-    // Handle --help as the sole argument. Special case that does not overlap
-    // with normal usage since there are always at least three arguments in 
-    // normal usage (herescript, executable and script-path).
+    // Handle --help before the argc check so that `herescript --help` works.
     if (argc == 2 && strcmp(argv[1], "--help") == 0) {
         printf(
             "Usage: herescript <executable> <script> [args...]\n"
@@ -721,6 +713,12 @@ int main(int argc, char **argv) {
             "  - Controlling exactly where the script filename appears in the argument list.\n"
         );
         return 0;
+    }
+
+    if (argc < 3) {
+        fprintf(stderr, "herescript: no script specified\n");
+        fprintf(stderr, "  Hint: This program is meant to be used as a shebang interpreter.\n");
+        return EXIT_GENERAL_ERROR;
     }
 
     // Initialize run state.
