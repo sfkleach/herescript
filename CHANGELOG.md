@@ -2,6 +2,27 @@
 
 Following the style in https://keepachangelog.com/en/1.0.0/
 
+## v0.1.1, 2026-04-18
+
+## Added
+
+- Added README.md the docs/tasks folder
+- Adding unit test suite following JustCallMeRay's review
+
+## Fixed
+
+- Fix `herescript <exec>` (no script) crashing with NULL dereference on `argv[2]` by
+  moving `--help` check before the argc guard and changing the guard from `argc < 2` to `argc < 3`
+- Fix header block not terminating on unrecognised `#X` lines (e.g. `# comment` in the
+  script body); `default: break` only exited the switch, not the header-parsing loop
+- Fix inconsistent install path: README.md examples and `--help` text referenced
+  `/usr/bin/herescript` but the Makefile installs to `/usr/local/bin/herescript`
+
+## Changed
+
+- Rename "Collaboration Style" section and clarify collaboration instructions in copilot-instructions.md
+
+
 ## v0.1.0
 
 ### Added
