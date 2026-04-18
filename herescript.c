@@ -894,10 +894,12 @@ int main(int argc, char **argv) {
                 }
                 break;
             default:
-                break;
+                // Any unrecognised #X line (e.g. "# comment" or "#!") is not a
+                // herescript header and signals the end of the header block.
+                goto done_headers;
         }
     }
-
+    done_headers:
     // Flush any trailing inline argument that was not terminated by a
     // non-#> header line.
     if (inline_buf.is_token) {
