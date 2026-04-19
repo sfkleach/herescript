@@ -958,3 +958,41 @@ tests:
           ],
           "cwd": "/tmp"
       }
+
+  - name: option-dry-run
+    description: "#! --dry-run prints planned exec args and env without running"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --dry-run
+      #: --foo bar ${0}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=echo",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-dry-run.sh"
+          ],
+          "argv": [
+              "echo",
+              "--foo",
+              "bar",
+              "${BUILD_DIR}/option-dry-run.sh"
+          ]
+      }
+
+  - name: option-dry-run-with-chdir
+    description: "--dry-run combined with --chdir shows the planned argv without running"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --dry-run --chdir /tmp
+      #: ${0}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-dry-run-with-chdir.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "${BUILD_DIR}/option-dry-run-with-chdir.sh"
+          ]
+      }

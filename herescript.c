@@ -205,6 +205,7 @@ typedef struct {
     int          user_param_count; // Number of user-supplied arguments.
     int          inline_arg_count; // Counter for HERESCRIPT0, HERESCRIPT1, etc.
     char        *chdir_target;     // Directory to chdir into before exec, or NULL.
+    bool         dry_run;          // If true, print exec args/env instead of running.
 } RunState;
 
 static void run_state_init(RunState *rs) {
@@ -215,6 +216,7 @@ static void run_state_init(RunState *rs) {
     rs->user_param_count = 0;
     rs->inline_arg_count = 0;
     rs->chdir_target = NULL;
+    rs->dry_run = false;
 }
 
 // Bind HERESCRIPT_FILE in the process environment so that the subprocess
@@ -235,6 +237,46 @@ static void run_state_bind_herescript_command(RunState const * rs) {
     }
 }
 
+// Compare two C-string pointers for qsort.
+static int compare_strings(const void *a, const void *b) {
+    return strcmp(*(const char **)a, *(const char **)b);
+}
+
+// Print the planned execve arguments and environment to stdout for --dry-run.
+// Output mirrors the JSON format produced by test-herescript for consistency.
+static void run_state_print_dry_run(RunState const *rs) {
+    // Count and sort environment variables for deterministic output.
+    int env_count = 0;
+    for (char **e = environ; *e != NULL; e++) env_count++;
+    char **sorted_env = malloc((size_t)env_count * sizeof(char *));
+    if (!sorted_env) { perror("malloc"); exit(EXIT_GENERAL_ERROR); }
+    for (int i = 0; i < env_count; i++) sorted_env[i] = environ[i];
+    qsort(sorted_env, (size_t)env_count, sizeof(char *), compare_strings);
+
+    printf("{\n");
+    printf("    \"env\": [\n");
+    for (int i = 0; i < env_count; i++) {
+        printf("        \"%s\"", sorted_env[i]);
+        printf("%s\n", i < env_count - 1 ? "," : "");
+    }
+    printf("    ],\n");
+
+    // argv[0] is the executable; remaining entries are rs->arguments.
+    size_t argc = rs->arguments.count + 1;
+    printf("    \"argv\": [\n");
+    printf("        \"%s\"", rs->executable);
+    if (rs->arguments.count > 0) printf(",");
+    printf("\n");
+    for (size_t i = 0; i < rs->arguments.count; i++) {
+        printf("        \"%s\"", rs->arguments.items[i]);
+        printf("%s\n", i < rs->arguments.count - 1 ? "," : "");
+    }
+    printf("    ]\n");
+    printf("}\n");
+    (void)argc;
+    free(sorted_env);
+}
+
 // Build a NULL-terminated argv array from rs->executable followed by all
 // accumulated arguments, then exec the interpreter. Does not return on success.
 static int run_state_exec(RunState * rs) {
@@ -244,6 +286,11 @@ static int run_state_exec(RunState * rs) {
             perror(rs->chdir_target);
             return EXIT_GENERAL_ERROR;
         }
+    }
+
+    if (rs->dry_run) {
+        run_state_print_dry_run(rs);
+        return EXIT_SUCCESS;
     }
 
     // Capacity is count + 1 for the executable + 1 for the NULL sentinel.
@@ -709,7 +756,9 @@ static int run_state_process_bang_line(RunState *rs, const char *line) {
         size_t tok_len = (size_t)(cursor - tok_start);
 
         // Match known options.
-        if (tok_len >= 7 && strncmp(tok_start, "--chdir", 7) == 0) {
+        if (tok_len == 9 && strncmp(tok_start, "--dry-run", 9) == 0) {
+            rs->dry_run = true;
+        } else if (tok_len >= 7 && strncmp(tok_start, "--chdir", 7) == 0) {
             if (tok_len > 7 && tok_start[7] == '=') {
                 // --chdir=DIRECTORY form.
                 free(rs->chdir_target);
