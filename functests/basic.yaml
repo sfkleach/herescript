@@ -959,6 +959,59 @@ tests:
           "cwd": "/tmp"
       }
 
+  - name: load-file-source
+    description: "Fixture: env bindings file used by option-load-file tests"
+    fixture: |
+      #: FOO=loaded-foo
+      #: BAR=loaded-bar
+
+  - name: option-load-file
+    description: "--load-file loads #: bindings from a file into the environment"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --dry-run --load-file ${BUILD_DIR}/load-file-source.sh
+      #: ${0}
+    output: |
+      {
+          "env": [
+              "BAR=loaded-bar",
+              "FOO=loaded-foo",
+              "HERESCRIPT_COMMAND=echo",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-load-file.sh"
+          ],
+          "argv": [
+              "echo",
+              "${BUILD_DIR}/option-load-file.sh"
+          ]
+      }
+
+  - name: option-load-file-equals
+    description: "--load-file=FILE (equals form) loads bindings from a file"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --dry-run --load-file=${BUILD_DIR}/load-file-source.sh
+      #: ${0}
+    output: |
+      {
+          "env": [
+              "BAR=loaded-bar",
+              "FOO=loaded-foo",
+              "HERESCRIPT_COMMAND=echo",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-load-file-equals.sh"
+          ],
+          "argv": [
+              "echo",
+              "${BUILD_DIR}/option-load-file-equals.sh"
+          ]
+      }
+
+  - name: option-load-file-missing
+    description: "--load-file with a non-existent file exits with an error"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --load-file /nonexistent/path/does-not-exist.env
+    exit_code: 1
+
   - name: option-dry-run
     description: "#! --dry-run prints planned exec args and env without running"
     script: |

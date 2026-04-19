@@ -5,13 +5,21 @@ Run from the top-level project directory:
     uv run --project functests python3 functests/functest.py
 
 Tests are loaded from all *.yaml files in the same directory as this script.
-Each YAML file contains a list of test cases, each with:
+Each YAML file contains a list of test cases. Two entry kinds are supported:
+
+Fixture entries (key: fixture):
+  - name:    a short identifier; the file is written as _build/<name>.<kind>
+  - fixture: raw file content to write (no shebang required, never executed)
+  - kind:    file extension to use (default: sh)
+
+Test entries (key: script):
   - name:   a short identifier used as the generated script filename stem
   - script: the full text of the shebang script to execute
-  - output: the expected stdout, or '...' to skip the test
+  - output: the expected stdout
+  - exit_code, stderr, env, args: optional fields (see run_test docstring)
 
-${BUILD_DIR} tokens in both scripts and expected output are substituted with
-the absolute path of _build/ before use.
+${BUILD_DIR} tokens in scripts, fixtures and expected output are substituted
+with the absolute path of _build/ before use.
 """
 
 import subprocess
@@ -63,6 +71,21 @@ class Main:
             return True
         return False
 
+    def write_fixture(self, test: dict) -> bool:
+        """Write a fixture file to the build directory.
+
+        Fixture entries use 'fixture:' instead of 'script:'. The content is
+        written verbatim (after ${BUILD_DIR} expansion) to _build/<name>.<kind>.
+        No shebang safety check is performed and the file is never executed.
+        Returns True on success, False on error.
+        """
+        name = test["name"]
+        kind = test.get("kind", "sh")
+        content = self.expand_build_dir(test["fixture"])
+        fixture_path = self._build_dir / f"{name}.{kind}"
+        fixture_path.write_text(content, newline="\n")
+        return True
+
     def run_test(self, test: dict) -> tuple:
         """Execute a single test case.
 
@@ -88,6 +111,9 @@ class Main:
                                        the script path, available as ${1}, ${2} etc.
         output    (str, required unless exit_code is set) — expected stdout; if '...',
                                          stdout is not compared (test runs for exit_code only)
+
+        Fixture entries (those with a 'fixture:' key instead of 'script:') are
+        handled by write_fixture() and must not be passed to this method.
         """
         name = test["name"]
         script_text = test["script"]
@@ -192,10 +218,22 @@ class Main:
         passed_count = 0
         failed_count = 0
         skipped_count = 0
+        fixture_count = 0
         failures = []
 
         for test in tests:
             name = test.get("name", "<unnamed>")
+
+            if "fixture" in test:
+                if self.write_fixture(test):
+                    fixture_count += 1
+                    print(f"  FIXTURE {name}")
+                else:
+                    failed_count += 1
+                    failures.append(name)
+                    print(f"  FAIL   {name} (fixture write failed)")
+                continue
+
             result, actual, expected, details = self.run_test(test)
 
             if result is None:
@@ -224,7 +262,7 @@ class Main:
                     # Always show unexpected stderr output to aid debugging.
                     print(f"         stderr: {details['actual_stderr'].rstrip()!r}")
 
-        return passed_count, failed_count, skipped_count, failures
+        return passed_count, failed_count, skipped_count, fixture_count, failures
 
 
 
@@ -242,19 +280,22 @@ class Main:
         total_passed = 0
         total_failed = 0
         total_skipped = 0
+        total_fixtures = 0
         all_failures: list[str] = []
 
         for yaml_path in self._test_files:
             print(f"\n{yaml_path}")
-            p, f, s, failures = self.run_yaml_file(yaml_path)
+            p, f, s, x, failures = self.run_yaml_file(yaml_path)
             total_passed += p
             total_failed += f
             total_skipped += s
+            total_fixtures += x
             all_failures.extend(failures)
 
         total_run = total_passed + total_failed
         print(f"\n{'─' * 50}")
-        print(f"Results: {total_passed}/{total_run} passed, {total_skipped} skipped")
+        fixture_note = f", {total_fixtures} fixture{'s' if total_fixtures != 1 else ''}" if total_fixtures else ""
+        print(f"Results: {total_passed}/{total_run} passed, {total_skipped} skipped{fixture_note}")
 
         if all_failures:
             print("\nFailing tests:")

@@ -741,8 +741,33 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
     maybe_token_free(&buf);
 }
 
+// Open path, read every line, and process those that begin with "#:" exactly
+// as if they had appeared as header lines in the script itself. All other lines
+// (including blank lines, shell-comment lines, and shebang lines) are silently
+// skipped, so a herescript file can serve as its own load-file source.
+static int run_state_load_file(RunState *rs, const char *path) {
+    FILE *fp = fopen(path, "r");
+    if (!fp) {
+        fprintf(stderr, "herescript: --load-file: ");
+        perror(path);
+        return EXIT_GENERAL_ERROR;
+    }
+    char *line = NULL;
+    size_t line_cap = 0;
+    ssize_t line_len;
+    while ((line_len = getline(&line, &line_cap, fp)) >= 0) {
+        if (line_len >= 2 && line[0] == '#' && line[1] == ':') {
+            run_state_process_colon_line(rs, line);
+        }
+    }
+    free(line);
+    fclose(fp);
+    return 0;
+}
+
 // Process a #! options line. Tokens are extracted by simple whitespace splitting.
 // Supports: --chdir DIRECTORY  or  --chdir=DIRECTORY
+//           --load-file FILE   or  --load-file=FILE
 static int run_state_process_bang_line(RunState *rs, const char *line) {
     const char *cursor = line + 2;  // Skip "#!" prefix.
 
@@ -758,6 +783,28 @@ static int run_state_process_bang_line(RunState *rs, const char *line) {
         // Match known options.
         if (tok_len == 9 && strncmp(tok_start, "--dry-run", 9) == 0) {
             rs->dry_run = true;
+        } else if (tok_len >= 11 && strncmp(tok_start, "--load-file", 11) == 0) {
+            char *file_path;
+            if (tok_len > 11 && tok_start[11] == '=') {
+                // --load-file=FILE form.
+                file_path = strndup_safe(tok_start + 12, tok_len - 12);
+            } else if (tok_len == 11) {
+                // --load-file FILE form: consume next whitespace-delimited token.
+                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+                if (!*cursor) {
+                    fprintf(stderr, "herescript: --load-file requires a file argument\n");
+                    return EXIT_INVALID_HEADER;
+                }
+                const char *val_start = cursor;
+                while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
+                file_path = strndup_safe(val_start, (size_t)(cursor - val_start));
+            } else {
+                fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
+                return EXIT_INVALID_HEADER;
+            }
+            int rc = run_state_load_file(rs, file_path);
+            free(file_path);
+            if (rc != 0) return rc;
         } else if (tok_len >= 7 && strncmp(tok_start, "--chdir", 7) == 0) {
             if (tok_len > 7 && tok_start[7] == '=') {
                 // --chdir=DIRECTORY form.
