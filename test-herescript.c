@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 // External environment variables provided by the system.
 extern char **environ;
@@ -119,15 +120,24 @@ int main(int argc, char *argv[]) {
 
     // Output JSON.
     printf("{\n");
-    
+
     // Print environment variables.
     print_string_array("env", sorted_env, env_count);
     printf(",\n");
-    
+
     // Print arguments.
     print_string_array("argv", argv, argc);
+
+    // Optionally print cwd when HERESCRIPT_SHOW_CWD is set.
+    if (getenv("HERESCRIPT_SHOW_CWD") != NULL) {
+        char cwd_buf[4096];
+        const char *cwd = getcwd(cwd_buf, sizeof(cwd_buf));
+        char *escaped = json_escape(cwd ? cwd_buf : NULL);
+        printf(",\n    \"cwd\": \"%s\"", escaped);
+        free(escaped);
+    }
+
     printf("\n");
-    
     printf("}\n");
 
     free(sorted_env);

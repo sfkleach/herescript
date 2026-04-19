@@ -39,13 +39,14 @@ structured comment lines:
 ## Header Lines
 
 The header block consists of all lines immediately following the `#!` shebang
-that begin with `##`, `#:`, or `#>`. The first non-header line ends the block.
+that begin with `##`, `#:`, `#>`, or `#!`. The first non-header line ends the block.
 
 | Prefix | Meaning |
 |--------|---------|
 | `##`   | Comment — discarded entirely. |
 | `#:`   | Arguments / bindings line — parsed with shell-like tokenisation. |
 | `#> `  | Inline quoted argument — must be followed by exactly one space. |
+| `#! `  | In-file option — controls herescript behaviour before exec. |
 
 ## Shell-like Tokenisation (`#:` lines)
 
@@ -106,6 +107,21 @@ A `#:` line between two `#>` runs forces a break, starting a new argument.
 ```
 
 A `#>` not followed by exactly one space is a syntax error.
+
+## In-file Options (`#!` lines)
+
+`#!` lines after the shebang configure herescript behaviour. Options are
+whitespace-separated on the same line. Mandatory arguments may be written
+as a separate token or with `=`:
+
+```
+#! --chdir /var/lib/myapp
+#! --chdir=/var/lib/myapp   ## equivalent
+```
+
+| Option               | Description |
+|----------------------|-------------|
+| `--chdir DIRECTORY`  | Change the working directory to `DIRECTORY` before exec. |
 
 ## Special Environment Variables
 

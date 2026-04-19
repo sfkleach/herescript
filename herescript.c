@@ -204,6 +204,7 @@ typedef struct {
     char       **user_params;      // Points into argv at the first user-supplied argument.
     int          user_param_count; // Number of user-supplied arguments.
     int          inline_arg_count; // Counter for HERESCRIPT0, HERESCRIPT1, etc.
+    char        *chdir_target;     // Directory to chdir into before exec, or NULL.
 } RunState;
 
 static void run_state_init(RunState *rs) {
@@ -213,6 +214,7 @@ static void run_state_init(RunState *rs) {
     rs->user_params = NULL;
     rs->user_param_count = 0;
     rs->inline_arg_count = 0;
+    rs->chdir_target = NULL;
 }
 
 // Bind HERESCRIPT_FILE in the process environment so that the subprocess
@@ -236,6 +238,14 @@ static void run_state_bind_herescript_command(RunState const * rs) {
 // Build a NULL-terminated argv array from rs->executable followed by all
 // accumulated arguments, then exec the interpreter. Does not return on success.
 static int run_state_exec(RunState * rs) {
+    if (rs->chdir_target != NULL) {
+        if (chdir(rs->chdir_target) != 0) {
+            fprintf(stderr, "herescript: --chdir: ");
+            perror(rs->chdir_target);
+            return EXIT_GENERAL_ERROR;
+        }
+    }
+
     // Capacity is count + 1 for the executable + 1 for the NULL sentinel.
     StringArray argv_arr;
     init_string_array(&argv_arr, rs->arguments.count + 2);
@@ -684,6 +694,49 @@ static void run_state_process_colon_line(RunState *rs, const char *line) {
     maybe_token_free(&buf);
 }
 
+// Process a #! options line. Tokens are extracted by simple whitespace splitting.
+// Supports: --chdir DIRECTORY  or  --chdir=DIRECTORY
+static int run_state_process_bang_line(RunState *rs, const char *line) {
+    const char *cursor = line + 2;  // Skip "#!" prefix.
+
+    while (*cursor) {
+        while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+        if (!*cursor) break;
+
+        // Collect one token.
+        const char *tok_start = cursor;
+        while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
+        size_t tok_len = (size_t)(cursor - tok_start);
+
+        // Match known options.
+        if (tok_len >= 7 && strncmp(tok_start, "--chdir", 7) == 0) {
+            if (tok_len > 7 && tok_start[7] == '=') {
+                // --chdir=DIRECTORY form.
+                free(rs->chdir_target);
+                rs->chdir_target = strndup_safe(tok_start + 8, tok_len - 8);
+            } else if (tok_len == 7) {
+                // --chdir DIRECTORY form: consume next whitespace-delimited token.
+                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+                if (!*cursor) {
+                    fprintf(stderr, "herescript: --chdir requires a directory argument\n");
+                    return EXIT_INVALID_HEADER;
+                }
+                const char *val_start = cursor;
+                while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
+                free(rs->chdir_target);
+                rs->chdir_target = strndup_safe(val_start, (size_t)(cursor - val_start));
+            } else {
+                fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
+                return EXIT_INVALID_HEADER;
+            }
+        } else {
+            fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
+            return EXIT_INVALID_HEADER;
+        }
+    }
+    return 0;
+}
+
 // ============================================================================
 // Main Program
 // ============================================================================
@@ -893,9 +946,18 @@ int main(int argc, char **argv) {
                     return EXIT_INVALID_HEADER;
                 }
                 break;
+            case '!': {
+                int bang_rc = run_state_process_bang_line(&rs, line);
+                if (bang_rc != 0) {
+                    maybe_token_free(&inline_buf);
+                    fclose(fp);
+                    free(line);
+                    return bang_rc;
+                }
+                break;
+            }
             default:
-                // Any unrecognised #X line (e.g. "# comment" or "#!") is not a
-                // herescript header and signals the end of the header block.
+                // Any unrecognised #X line (e.g. "# comment") ends the header block.
                 goto done_headers;
         }
     }

@@ -138,7 +138,7 @@ class Main:
         # in the test's env: field, so that inherited variables do not contaminate
         # the JSON env array that test-herescript prints.
         proc = subprocess.run(
-            [script_path] + extra_args,
+            [str(script_path)] + extra_args,
             capture_output=True,
             text=True,
             env=extra_env,

@@ -918,3 +918,43 @@ tests:
               "p10"
           ]
       }
+
+  - name: option-chdir-space
+    description: "#! --chdir DIRECTORY changes the working directory (space form)"
+    env:
+      HERESCRIPT_SHOW_CWD: "1"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --chdir /tmp
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-chdir-space.sh",
+              "HERESCRIPT_SHOW_CWD=1"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ],
+          "cwd": "/tmp"
+      }
+
+  - name: option-chdir-equals
+    description: "#! --chdir=DIRECTORY changes the working directory (equals form)"
+    env:
+      HERESCRIPT_SHOW_CWD: "1"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --chdir=/tmp
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-chdir-equals.sh",
+              "HERESCRIPT_SHOW_CWD=1"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ],
+          "cwd": "/tmp"
+      }
