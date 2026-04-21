@@ -88,6 +88,10 @@ from child). If the variable does not exist, this is not an error.
 
 Implement this option, add a suitable functional test and update the documentation accordingly.
 
+### Step 7: Tidy up option processing
+
+... to be completed
+
 ## Final Step: Definition of Done
 
 Review the [definition of done](../definition-of-done.md).
