@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <stdbool.h>
@@ -765,9 +766,56 @@ static int run_state_load_file(RunState *rs, const char *path) {
     return 0;
 }
 
+// Resolve DIR to an absolute path (must exist and be a directory) and prepend
+// it to the PATH environment variable. When PATH is unset or empty, PATH is
+// simply set to the resolved directory.
+static int run_state_path_prepend(RunState const *rs, const char *dir) {
+    (void)rs;
+    struct stat st;
+    if (stat(dir, &st) != 0) {
+        fprintf(stderr, "herescript: --path-prepend: ");
+        perror(dir);
+        return EXIT_GENERAL_ERROR;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "herescript: --path-prepend: %s: not a directory\n", dir);
+        return EXIT_GENERAL_ERROR;
+    }
+    char *abs = realpath(dir, NULL);
+    if (!abs) {
+        fprintf(stderr, "herescript: --path-prepend: ");
+        perror(dir);
+        return EXIT_GENERAL_ERROR;
+    }
+    const char *current = getenv("PATH");
+    char *new_path;
+    if (current && *current) {
+        size_t len = strlen(abs) + 1 + strlen(current) + 1;
+        new_path = malloc(len);
+        if (!new_path) {
+            perror("malloc");
+            free(abs);
+            exit(EXIT_GENERAL_ERROR);
+        }
+        snprintf(new_path, len, "%s:%s", abs, current);
+    } else {
+        new_path = strdup_safe(abs);
+    }
+    int rc = 0;
+    if (setenv("PATH", new_path, 1) != 0) {
+        perror("herescript: setenv PATH");
+        rc = EXIT_GENERAL_ERROR;
+    }
+    free(abs);
+    free(new_path);
+    return rc;
+}
+
 // Process a #! options line. Tokens are extracted by simple whitespace splitting.
-// Supports: --chdir DIRECTORY  or  --chdir=DIRECTORY
-//           --load-file FILE   or  --load-file=FILE
+// Supports: --chdir DIRECTORY        or  --chdir=DIRECTORY
+//           --load-file FILE         or  --load-file=FILE
+//           --path-prepend DIRECTORY or  --path-prepend=DIRECTORY
+//           --dry-run
 static int run_state_process_bang_line(RunState *rs, const char *line) {
     const char *cursor = line + 2;  // Skip "#!" prefix.
 
@@ -804,6 +852,28 @@ static int run_state_process_bang_line(RunState *rs, const char *line) {
             }
             int rc = run_state_load_file(rs, file_path);
             free(file_path);
+            if (rc != 0) return rc;
+        } else if (tok_len >= 14 && strncmp(tok_start, "--path-prepend", 14) == 0) {
+            char *dir;
+            if (tok_len > 14 && tok_start[14] == '=') {
+                // --path-prepend=DIRECTORY form.
+                dir = strndup_safe(tok_start + 15, tok_len - 15);
+            } else if (tok_len == 14) {
+                // --path-prepend DIRECTORY form: consume next whitespace-delimited token.
+                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+                if (!*cursor) {
+                    fprintf(stderr, "herescript: --path-prepend requires a directory argument\n");
+                    return EXIT_INVALID_HEADER;
+                }
+                const char *val_start = cursor;
+                while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
+                dir = strndup_safe(val_start, (size_t)(cursor - val_start));
+            } else {
+                fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
+                return EXIT_INVALID_HEADER;
+            }
+            int rc = run_state_path_prepend(rs, dir);
+            free(dir);
             if (rc != 0) return rc;
         } else if (tok_len >= 7 && strncmp(tok_start, "--chdir", 7) == 0) {
             if (tok_len > 7 && tok_start[7] == '=') {

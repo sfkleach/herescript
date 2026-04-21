@@ -4,7 +4,14 @@ Following the style in https://keepachangelog.com/en/1.0.0/
 
 ## Unreleased
 
-To be completed ...
+### Added
+
+- In-file options via `#!` header lines:
+  - `--chdir DIRECTORY` (or `--chdir=DIRECTORY`) — change the working directory before exec.
+  - `--dry-run` — print planned `execve` arguments and environment without running.
+  - `--load-file FILE` (or `--load-file=FILE`) — process `#:` lines from an external file before exec.
+  - `--path-prepend DIRECTORY` (or `--path-prepend=DIRECTORY`) — prepend an
+    existing directory (converted to an absolute path) to `PATH`.
 
 ## v0.1.1, 2026-04-18
 

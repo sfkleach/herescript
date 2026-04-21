@@ -119,9 +119,12 @@ as a separate token or with `=`:
 #! --chdir=/var/lib/myapp   ## equivalent
 ```
 
-| Option               | Description |
-|----------------------|-------------|
-| `--chdir DIRECTORY`  | Change the working directory to `DIRECTORY` before exec. |
+| Option                       | Description |
+|------------------------------|-------------|
+| `--chdir DIRECTORY`          | Change the working directory to `DIRECTORY` before exec. |
+| `--dry-run`                  | Print the planned `execve` arguments and environment to stdout instead of running; useful for diagnosing header expansion. |
+| `--load-file FILE`           | Load `FILE` and process every `#:` line it contains as if it had appeared in the script itself. Combines a `.env` file and in-file option loading. |
+| `--path-prepend DIRECTORY`   | Prepend `DIRECTORY` to `PATH`; `DIRECTORY` must exist and is converted to an absolute path. The canonical way to activate a virtualenv or local toolchain without sourcing shell scripts. |
 
 ## Special Environment Variables
 

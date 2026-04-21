@@ -1049,3 +1049,90 @@ tests:
               "${BUILD_DIR}/option-dry-run-with-chdir.sh"
           ]
       }
+
+  - name: option-path-prepend-space
+    description: "#! --path-prepend DIRECTORY prepends an absolute path to PATH (space form)"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --path-prepend ${BUILD_DIR}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-path-prepend-space.sh",
+              "PATH=${BUILD_DIR}"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: option-path-prepend-equals
+    description: "#! --path-prepend=DIRECTORY prepends an absolute path to PATH (equals form)"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --path-prepend=${BUILD_DIR}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-path-prepend-equals.sh",
+              "PATH=${BUILD_DIR}"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: option-path-prepend-existing-path
+    description: "--path-prepend with an existing PATH joins with a colon separator"
+    env:
+      PATH: /usr/bin
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --path-prepend=${BUILD_DIR}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-path-prepend-existing-path.sh",
+              "PATH=${BUILD_DIR}:/usr/bin"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: option-path-prepend-multiple
+    description: "multiple --path-prepend options stack, most recent first"
+    env:
+      PATH: /usr/bin
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --path-prepend=${BUILD_DIR}
+      #! --path-prepend=/tmp
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-path-prepend-multiple.sh",
+              "PATH=/tmp:${BUILD_DIR}:/usr/bin"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: option-path-prepend-missing
+    description: "--path-prepend with a non-existent directory exits with an error"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --path-prepend /nonexistent/path/does-not-exist
+    exit_code: 1
+
+  - name: option-path-prepend-not-a-directory
+    description: "--path-prepend with a path that is not a directory exits with an error"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --path-prepend ${BUILD_DIR}/herescript
+    exit_code: 1
