@@ -207,6 +207,8 @@ typedef struct {
     int          inline_arg_count; // Counter for HERESCRIPT0, HERESCRIPT1, etc.
     char        *chdir_target;     // Directory to chdir into before exec, or NULL.
     bool         dry_run;          // If true, print exec args/env instead of running.
+    mode_t       umask_value;      // File creation mask to apply before exec.
+    bool         umask_set;        // True if --umask was specified.
 } RunState;
 
 static void run_state_init(RunState *rs) {
@@ -218,6 +220,8 @@ static void run_state_init(RunState *rs) {
     rs->inline_arg_count = 0;
     rs->chdir_target = NULL;
     rs->dry_run = false;
+    rs->umask_value = 0;
+    rs->umask_set = false;
 }
 
 // Bind HERESCRIPT_FILE in the process environment so that the subprocess
@@ -287,6 +291,10 @@ static int run_state_exec(RunState * rs) {
             perror(rs->chdir_target);
             return EXIT_GENERAL_ERROR;
         }
+    }
+
+    if (rs->umask_set) {
+        umask(rs->umask_value);
     }
 
     if (rs->dry_run) {
@@ -815,6 +823,7 @@ static int run_state_path_prepend(RunState const *rs, const char *dir) {
 // Supports: --chdir DIRECTORY        or  --chdir=DIRECTORY
 //           --load-file FILE         or  --load-file=FILE
 //           --path-prepend DIRECTORY or  --path-prepend=DIRECTORY
+//           --umask MASK             or  --umask=MASK
 //           --dry-run
 static int run_state_process_bang_line(RunState *rs, const char *line) {
     const char *cursor = line + 2;  // Skip "#!" prefix.
@@ -853,6 +862,35 @@ static int run_state_process_bang_line(RunState *rs, const char *line) {
             int rc = run_state_load_file(rs, file_path);
             free(file_path);
             if (rc != 0) return rc;
+        } else if (tok_len >= 7 && strncmp(tok_start, "--umask", 7) == 0) {
+            char *mask_str;
+            if (tok_len > 7 && tok_start[7] == '=') {
+                // --umask=MASK form.
+                mask_str = strndup_safe(tok_start + 8, tok_len - 8);
+            } else if (tok_len == 7) {
+                // --umask MASK form: consume next whitespace-delimited token.
+                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+                if (!*cursor) {
+                    fprintf(stderr, "herescript: --umask requires a mask argument\n");
+                    return EXIT_INVALID_HEADER;
+                }
+                const char *val_start = cursor;
+                while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
+                mask_str = strndup_safe(val_start, (size_t)(cursor - val_start));
+            } else {
+                fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
+                return EXIT_INVALID_HEADER;
+            }
+            char *end;
+            long val = strtol(mask_str, &end, 8);
+            if (end == mask_str || *end != '\0' || val < 0 || val > 0777) {
+                fprintf(stderr, "herescript: --umask: invalid mask '%s' (expected octal 0-0777)\n", mask_str);
+                free(mask_str);
+                return EXIT_INVALID_HEADER;
+            }
+            rs->umask_value = (mode_t)val;
+            rs->umask_set = true;
+            free(mask_str);
         } else if (tok_len >= 14 && strncmp(tok_start, "--path-prepend", 14) == 0) {
             char *dir;
             if (tok_len > 14 && tok_start[14] == '=') {

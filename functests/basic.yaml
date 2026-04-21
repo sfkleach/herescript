@@ -1136,3 +1136,77 @@ tests:
       #!${BUILD_DIR}/herescript echo
       #! --path-prepend ${BUILD_DIR}/herescript
     exit_code: 1
+
+  - name: option-umask-space
+    description: "#! --umask MASK sets the file creation mask before exec (space form)"
+    env:
+      HERESCRIPT_SHOW_UMASK: "1"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --umask 027
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-umask-space.sh",
+              "HERESCRIPT_SHOW_UMASK=1"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ],
+          "umask": "0027"
+      }
+
+  - name: option-umask-equals
+    description: "#! --umask=MASK sets the file creation mask before exec (equals form)"
+    env:
+      HERESCRIPT_SHOW_UMASK: "1"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --umask=077
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-umask-equals.sh",
+              "HERESCRIPT_SHOW_UMASK=1"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ],
+          "umask": "0077"
+      }
+
+  - name: option-umask-leading-zero
+    description: "#! --umask accepts a leading zero (still octal)"
+    env:
+      HERESCRIPT_SHOW_UMASK: "1"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --umask 0022
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-umask-leading-zero.sh",
+              "HERESCRIPT_SHOW_UMASK=1"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ],
+          "umask": "0022"
+      }
+
+  - name: option-umask-invalid
+    description: "--umask with a non-numeric mask exits with an error"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --umask not-a-number
+    exit_code: 4
+
+  - name: option-umask-out-of-range
+    description: "--umask with a mask > 0777 exits with an error"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --umask 1000
+    exit_code: 4

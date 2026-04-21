@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 // External environment variables provided by the system.
@@ -135,6 +136,14 @@ int main(int argc, char *argv[]) {
         char *escaped = json_escape(cwd ? cwd_buf : NULL);
         printf(",\n    \"cwd\": \"%s\"", escaped);
         free(escaped);
+    }
+
+    // Optionally print file creation mask when HERESCRIPT_SHOW_UMASK is set.
+    // umask(2) has no read-only form, so we set and restore to peek at it.
+    if (getenv("HERESCRIPT_SHOW_UMASK") != NULL) {
+        mode_t current = umask(0);
+        umask(current);
+        printf(",\n    \"umask\": \"%04o\"", (unsigned int)current);
     }
 
     printf("\n");

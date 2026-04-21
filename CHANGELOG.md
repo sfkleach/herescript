@@ -12,6 +12,8 @@ Following the style in https://keepachangelog.com/en/1.0.0/
   - `--load-file FILE` (or `--load-file=FILE`) — process `#:` lines from an external file before exec.
   - `--path-prepend DIRECTORY` (or `--path-prepend=DIRECTORY`) — prepend an
     existing directory (converted to an absolute path) to `PATH`.
+  - `--umask MASK` (or `--umask=MASK`) — set the file creation mask (octal)
+    before exec.
 
 ## v0.1.1, 2026-04-18
 
