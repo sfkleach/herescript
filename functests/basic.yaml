@@ -1210,3 +1210,62 @@ tests:
       #!${BUILD_DIR}/herescript echo
       #! --umask 1000
     exit_code: 4
+
+  - name: option-unset-space
+    description: "#! --unset VAR removes an inherited env var before exec (space form)"
+    env:
+      HERESCRIPT_UNSET_ME: "should-be-gone"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --unset HERESCRIPT_UNSET_ME
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-unset-space.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: option-unset-equals
+    description: "#! --unset=VAR removes an inherited env var before exec (equals form)"
+    env:
+      HERESCRIPT_UNSET_ME: "should-be-gone"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --unset=HERESCRIPT_UNSET_ME
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-unset-equals.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: option-unset-missing
+    description: "#! --unset VAR is not an error when the variable is not set"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --unset HERESCRIPT_NO_SUCH_VAR
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-unset-missing.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: option-unset-no-arg
+    description: "--unset with no argument exits with an error"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --unset
+    exit_code: 4

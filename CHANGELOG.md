@@ -14,6 +14,8 @@ Following the style in https://keepachangelog.com/en/1.0.0/
     existing directory (converted to an absolute path) to `PATH`.
   - `--umask MASK` (or `--umask=MASK`) — set the file creation mask (octal)
     before exec.
+  - `--unset VAR` (or `--unset=VAR`) — remove an inherited environment variable
+    before exec; not an error if the variable is not set.
 
 ## v0.1.1, 2026-04-18
 

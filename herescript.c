@@ -209,6 +209,7 @@ typedef struct {
     bool         dry_run;          // If true, print exec args/env instead of running.
     mode_t       umask_value;      // File creation mask to apply before exec.
     bool         umask_set;        // True if --umask was specified.
+    StringArray  unset_vars;       // Environment variables to unset before exec.
 } RunState;
 
 static void run_state_init(RunState *rs) {
@@ -222,6 +223,7 @@ static void run_state_init(RunState *rs) {
     rs->dry_run = false;
     rs->umask_value = 0;
     rs->umask_set = false;
+    init_string_array(&rs->unset_vars, 4);
 }
 
 // Bind HERESCRIPT_FILE in the process environment so that the subprocess
@@ -295,6 +297,10 @@ static int run_state_exec(RunState * rs) {
 
     if (rs->umask_set) {
         umask(rs->umask_value);
+    }
+
+    for (size_t i = 0; i < rs->unset_vars.count; i++) {
+        unsetenv(rs->unset_vars.items[i]);
     }
 
     if (rs->dry_run) {
@@ -933,6 +939,26 @@ static int run_state_process_bang_line(RunState *rs, const char *line) {
                 fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
                 return EXIT_INVALID_HEADER;
             }
+        } else if (tok_len >= 7 && strncmp(tok_start, "--unset", 7) == 0) {
+            char *var_name;
+            if (tok_len > 7 && tok_start[7] == '=') {
+                // --unset=VAR form.
+                var_name = strndup_safe(tok_start + 8, tok_len - 8);
+            } else if (tok_len == 7) {
+                // --unset VAR form: consume next whitespace-delimited token.
+                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+                if (!*cursor) {
+                    fprintf(stderr, "herescript: --unset requires a variable name argument\n");
+                    return EXIT_INVALID_HEADER;
+                }
+                const char *val_start = cursor;
+                while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
+                var_name = strndup_safe(val_start, (size_t)(cursor - val_start));
+            } else {
+                fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
+                return EXIT_INVALID_HEADER;
+            }
+            append_string_array(&rs->unset_vars, var_name);
         } else {
             fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
             return EXIT_INVALID_HEADER;

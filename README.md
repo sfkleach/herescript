@@ -126,6 +126,7 @@ as a separate token or with `=`:
 | `--load-file FILE`           | Load `FILE` and process every `#:` line it contains as if it had appeared in the script itself. Combines a `.env` file and in-file option loading. |
 | `--path-prepend DIRECTORY`   | Prepend `DIRECTORY` to `PATH`; `DIRECTORY` must exist and is converted to an absolute path. The canonical way to activate a virtualenv or local toolchain without sourcing shell scripts. |
 | `--umask MASK`               | Set the file creation mask (octal, e.g. `027`) before exec; useful for scripts that create files. |
+| `--unset VAR`                | Remove the environment variable `VAR` before exec; useful for scrubbing sensitive inherited variables. Not an error if `VAR` is not set. |
 
 ## Special Environment Variables
 
