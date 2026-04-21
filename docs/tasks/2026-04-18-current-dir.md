@@ -90,7 +90,37 @@ Implement this option, add a suitable functional test and update the documentati
 
 ### Step 7: Tidy up option processing
 
-... to be completed
+### Part A
+
+- `run_state_process_bang_line` has become too big and straggly. 
+- The interior of the while-loop should be extracted to a helper function
+  that processes options.
+
+### Part B
+
+- There is repetition in the way long options with an argument is processed
+- We should extract a helper function that handles `=` properly. I suggest
+  something like the following:
+
+```c
+int handle_argument(size_t opt_len, char * tok_start, char **argument) {
+    *argument = NULL;
+    if (tok_len > opt_len && tok_start[opt_len] == '=') {
+        *argument = strndup_safe(tok_start + opt_len + 1, tok_len - opt_len - 1);
+    } else if (tok_len == opt_len) {
+        while (*cursor && isspace((unsigned char)*cursor)) cursor++;
+        if (!*cursor) {
+            return EXIT_INVALID_HEADER;
+        }
+        const char *val_start = cursor;
+        while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
+        *argument = strndup_safe(val_start, (size_t)(cursor - val_start));
+    } else {
+        return EXIT_INVALID_HEADER;
+    }
+}
+```
+
 
 ## Final Step: Definition of Done
 
