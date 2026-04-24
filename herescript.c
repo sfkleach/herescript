@@ -826,11 +826,107 @@ static int run_state_path_prepend(RunState const *rs, const char *dir) {
     return rc;
 }
 
-// Process a #! options line. Tokens are extracted by simple whitespace splitting.
+// Extract the argument for a long option that accepts either "--opt VALUE" or
+// "--opt=VALUE" form. The token at tok_start/tok_len is the option text,
+// possibly followed by "=VALUE"; otherwise the next whitespace-delimited token
+// is consumed from *cursor. On success, *argument is a freshly allocated string
+// owned by the caller; on failure, *argument is NULL and an error is printed.
+//
+// Returns 0 on success, or EXIT_INVALID_HEADER if the token is neither an
+// exact match nor an "--opt=VALUE" form, or if the separate argument is absent.
+static int extract_option_argument(
+    const char *opt_name,
+    const char *tok_start, size_t tok_len,
+    const char **cursor,
+    char **argument
+) {
+    *argument = NULL;
+    size_t opt_len = strlen(opt_name);
+    if (tok_len > opt_len && tok_start[opt_len] == '=') {
+        *argument = strndup_safe(tok_start + opt_len + 1, tok_len - opt_len - 1);
+        return 0;
+    }
+    if (tok_len == opt_len) {
+        while (**cursor && isspace((unsigned char)**cursor)) (*cursor)++;
+        if (!**cursor) {
+            fprintf(stderr, "herescript: %s requires an argument\n", opt_name);
+            return EXIT_INVALID_HEADER;
+        }
+        const char *val_start = *cursor;
+        while (**cursor && !isspace((unsigned char)**cursor)) (*cursor)++;
+        *argument = strndup_safe(val_start, (size_t)(*cursor - val_start));
+        return 0;
+    }
+    fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
+    return EXIT_INVALID_HEADER;
+}
+
+// Handle a single option token extracted from a #! line. Advances *cursor when
+// an option takes a separate-token argument. Returns 0 on success or an exit
+// code on error.
+static int process_bang_option(RunState *rs, const char *tok_start, size_t tok_len, const char **cursor) {
+    if (tok_len == 9 && strncmp(tok_start, "--dry-run", 9) == 0) {
+        rs->dry_run = true;
+        return 0;
+    }
+    if (tok_len >= 11 && strncmp(tok_start, "--load-file", 11) == 0) {
+        char *file_path;
+        int rc = extract_option_argument("--load-file", tok_start, tok_len, cursor, &file_path);
+        if (rc != 0) return rc;
+        rc = run_state_load_file(rs, file_path);
+        free(file_path);
+        return rc;
+    }
+    if (tok_len >= 7 && strncmp(tok_start, "--umask", 7) == 0) {
+        char *mask_str;
+        int rc = extract_option_argument("--umask", tok_start, tok_len, cursor, &mask_str);
+        if (rc != 0) return rc;
+        char *end;
+        long val = strtol(mask_str, &end, 8);
+        if (end == mask_str || *end != '\0' || val < 0 || val > 0777) {
+            fprintf(stderr, "herescript: --umask: invalid mask '%s' (expected octal 0-0777)\n", mask_str);
+            free(mask_str);
+            return EXIT_INVALID_HEADER;
+        }
+        rs->umask_value = (mode_t)val;
+        rs->umask_set = true;
+        free(mask_str);
+        return 0;
+    }
+    if (tok_len >= 14 && strncmp(tok_start, "--path-prepend", 14) == 0) {
+        char *dir;
+        int rc = extract_option_argument("--path-prepend", tok_start, tok_len, cursor, &dir);
+        if (rc != 0) return rc;
+        rc = run_state_path_prepend(rs, dir);
+        free(dir);
+        return rc;
+    }
+    if (tok_len >= 7 && strncmp(tok_start, "--chdir", 7) == 0) {
+        char *dir;
+        int rc = extract_option_argument("--chdir", tok_start, tok_len, cursor, &dir);
+        if (rc != 0) return rc;
+        free(rs->chdir_target);
+        rs->chdir_target = dir;
+        return 0;
+    }
+    if (tok_len >= 7 && strncmp(tok_start, "--unset", 7) == 0) {
+        char *var_name;
+        int rc = extract_option_argument("--unset", tok_start, tok_len, cursor, &var_name);
+        if (rc != 0) return rc;
+        append_string_array(&rs->unset_vars, var_name);
+        return 0;
+    }
+    fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
+    return EXIT_INVALID_HEADER;
+}
+
+// Process a #! options line. Tokens are extracted by simple whitespace splitting
+// and dispatched via process_bang_option.
 // Supports: --chdir DIRECTORY        or  --chdir=DIRECTORY
 //           --load-file FILE         or  --load-file=FILE
 //           --path-prepend DIRECTORY or  --path-prepend=DIRECTORY
 //           --umask MASK             or  --umask=MASK
+//           --unset VAR              or  --unset=VAR
 //           --dry-run
 static int run_state_process_bang_line(RunState *rs, const char *line) {
     const char *cursor = line + 2;  // Skip "#!" prefix.
@@ -844,126 +940,8 @@ static int run_state_process_bang_line(RunState *rs, const char *line) {
         while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
         size_t tok_len = (size_t)(cursor - tok_start);
 
-        // Match known options.
-        if (tok_len == 9 && strncmp(tok_start, "--dry-run", 9) == 0) {
-            rs->dry_run = true;
-        } else if (tok_len >= 11 && strncmp(tok_start, "--load-file", 11) == 0) {
-            char *file_path;
-            if (tok_len > 11 && tok_start[11] == '=') {
-                // --load-file=FILE form.
-                file_path = strndup_safe(tok_start + 12, tok_len - 12);
-            } else if (tok_len == 11) {
-                // --load-file FILE form: consume next whitespace-delimited token.
-                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
-                if (!*cursor) {
-                    fprintf(stderr, "herescript: --load-file requires a file argument\n");
-                    return EXIT_INVALID_HEADER;
-                }
-                const char *val_start = cursor;
-                while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
-                file_path = strndup_safe(val_start, (size_t)(cursor - val_start));
-            } else {
-                fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
-                return EXIT_INVALID_HEADER;
-            }
-            int rc = run_state_load_file(rs, file_path);
-            free(file_path);
-            if (rc != 0) return rc;
-        } else if (tok_len >= 7 && strncmp(tok_start, "--umask", 7) == 0) {
-            char *mask_str;
-            if (tok_len > 7 && tok_start[7] == '=') {
-                // --umask=MASK form.
-                mask_str = strndup_safe(tok_start + 8, tok_len - 8);
-            } else if (tok_len == 7) {
-                // --umask MASK form: consume next whitespace-delimited token.
-                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
-                if (!*cursor) {
-                    fprintf(stderr, "herescript: --umask requires a mask argument\n");
-                    return EXIT_INVALID_HEADER;
-                }
-                const char *val_start = cursor;
-                while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
-                mask_str = strndup_safe(val_start, (size_t)(cursor - val_start));
-            } else {
-                fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
-                return EXIT_INVALID_HEADER;
-            }
-            char *end;
-            long val = strtol(mask_str, &end, 8);
-            if (end == mask_str || *end != '\0' || val < 0 || val > 0777) {
-                fprintf(stderr, "herescript: --umask: invalid mask '%s' (expected octal 0-0777)\n", mask_str);
-                free(mask_str);
-                return EXIT_INVALID_HEADER;
-            }
-            rs->umask_value = (mode_t)val;
-            rs->umask_set = true;
-            free(mask_str);
-        } else if (tok_len >= 14 && strncmp(tok_start, "--path-prepend", 14) == 0) {
-            char *dir;
-            if (tok_len > 14 && tok_start[14] == '=') {
-                // --path-prepend=DIRECTORY form.
-                dir = strndup_safe(tok_start + 15, tok_len - 15);
-            } else if (tok_len == 14) {
-                // --path-prepend DIRECTORY form: consume next whitespace-delimited token.
-                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
-                if (!*cursor) {
-                    fprintf(stderr, "herescript: --path-prepend requires a directory argument\n");
-                    return EXIT_INVALID_HEADER;
-                }
-                const char *val_start = cursor;
-                while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
-                dir = strndup_safe(val_start, (size_t)(cursor - val_start));
-            } else {
-                fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
-                return EXIT_INVALID_HEADER;
-            }
-            int rc = run_state_path_prepend(rs, dir);
-            free(dir);
-            if (rc != 0) return rc;
-        } else if (tok_len >= 7 && strncmp(tok_start, "--chdir", 7) == 0) {
-            if (tok_len > 7 && tok_start[7] == '=') {
-                // --chdir=DIRECTORY form.
-                free(rs->chdir_target);
-                rs->chdir_target = strndup_safe(tok_start + 8, tok_len - 8);
-            } else if (tok_len == 7) {
-                // --chdir DIRECTORY form: consume next whitespace-delimited token.
-                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
-                if (!*cursor) {
-                    fprintf(stderr, "herescript: --chdir requires a directory argument\n");
-                    return EXIT_INVALID_HEADER;
-                }
-                const char *val_start = cursor;
-                while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
-                free(rs->chdir_target);
-                rs->chdir_target = strndup_safe(val_start, (size_t)(cursor - val_start));
-            } else {
-                fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
-                return EXIT_INVALID_HEADER;
-            }
-        } else if (tok_len >= 7 && strncmp(tok_start, "--unset", 7) == 0) {
-            char *var_name;
-            if (tok_len > 7 && tok_start[7] == '=') {
-                // --unset=VAR form.
-                var_name = strndup_safe(tok_start + 8, tok_len - 8);
-            } else if (tok_len == 7) {
-                // --unset VAR form: consume next whitespace-delimited token.
-                while (*cursor && isspace((unsigned char)*cursor)) cursor++;
-                if (!*cursor) {
-                    fprintf(stderr, "herescript: --unset requires a variable name argument\n");
-                    return EXIT_INVALID_HEADER;
-                }
-                const char *val_start = cursor;
-                while (*cursor && !isspace((unsigned char)*cursor)) cursor++;
-                var_name = strndup_safe(val_start, (size_t)(cursor - val_start));
-            } else {
-                fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
-                return EXIT_INVALID_HEADER;
-            }
-            append_string_array(&rs->unset_vars, var_name);
-        } else {
-            fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
-            return EXIT_INVALID_HEADER;
-        }
+        int rc = process_bang_option(rs, tok_start, tok_len, &cursor);
+        if (rc != 0) return rc;
     }
     return 0;
 }
