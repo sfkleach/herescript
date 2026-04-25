@@ -2,6 +2,41 @@
 
 Following the style in https://keepachangelog.com/en/1.0.0/
 
+## v0.4.0, 2026-04-25
+
+### Added
+
+- `#|` header line: pipe the preceding `#>` block through a command and
+  optionally bind the captured output to an environment variable.
+  - `#| CMD ARGS... => NAME` — pipe block through CMD; bind stdout to `$NAME`.
+  - `#| CMD ARGS...` — pipe block through CMD; stdout inherited (side effect).
+  - `#| => NAME` — bind block content directly to `$NAME` without running a command.
+  - `#|` must immediately follow a run of `#>` lines.
+- `#$` header line: run a command independently (stdin from `/dev/null`) and
+  optionally bind the captured output to an environment variable.
+  - `#$ CMD ARGS... => NAME` — run CMD; bind stdout to `$NAME`.
+  - `#$ CMD ARGS...` — run CMD; stdout inherited (side effect).
+  - The command is mandatory; omitting it is a parse error.
+- Both `#|` and `#$` tokenise their command line identically to `#:` lines
+  (full quoting and variable substitution), excluding the trailing `=> NAME`.
+- Trailing newlines are stripped from captured output, matching shell `$(...)`.
+- Stderr from subcommands is inherited (passes through to the terminal).
+- New exit code 6 (`EXIT_SUBCOMMAND_FAILURE`) when a subcommand exits non-zero.
+- `#|` and `#$` are forbidden inside `--load-file` files.
+- `--dry-run` suppresses subcommand execution.
+
+### Changed
+
+- All header effects (`--chdir`, `--umask`, `--unset`, `#|`, `#$`, environment
+  bindings) are now applied immediately and in order at header-processing time.
+  A subcommand can only see the options and bindings that precede it.
+- **Security:** scripts containing `#|` or `#$` execute commands during script
+  loading, before the main interpreter is launched. Do not run herescript
+  scripts from untrusted sources.
+- `--unset-undefined` is now order-dependent: it must appear before the
+  `--unset` directives it governs (previously documented as applying globally
+  regardless of order).
+
 ## v0.3.0, 2026-04-25
 
 ### Added
@@ -12,7 +47,7 @@ Following the style in https://keepachangelog.com/en/1.0.0/
 - `--unset-undefined MODE` (or `--unset-undefined=MODE`) — controls what
   happens when `--unset` names a variable that is not defined: `error` (default,
   halt), `warning` (print to stderr and continue), or `allow` (silent continue).
-  Applies globally to all `--unset` directives in the file.
+  Must precede the `--unset` directives it governs (see v0.4.0 Changes).
 
 ### Changes
 

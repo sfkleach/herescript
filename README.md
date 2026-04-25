@@ -39,7 +39,8 @@ structured comment lines:
 ## Header Lines
 
 The header block consists of all lines immediately following the `#!` shebang
-that begin with `##`, `#:`, `#>`, or `#!`. The first non-header line ends the block.
+that begin with `##`, `#:`, `#>`, `#!`, `#|`, or `#$`. The first non-header
+line ends the block.
 
 | Prefix | Meaning |
 |--------|---------|
@@ -47,6 +48,8 @@ that begin with `##`, `#:`, `#>`, or `#!`. The first non-header line ends the bl
 | `#:`   | Arguments / bindings line — parsed with shell-like tokenisation. |
 | `#> `  | Inline quoted argument — must be followed by exactly one space. |
 | `#! `  | In-file option — controls herescript behaviour before exec. |
+| `#|`   | Subcommand pipe — pipe last `#>` block through a command; bind captured output to a variable. |
+| `#$`   | Subcommand — run a command with stdin from `/dev/null`; bind captured output to a variable. |
 
 ## Shell-like Tokenisation (`#:` lines)
 
@@ -109,6 +112,63 @@ break, starting a new argument.
 
 A `#>` not followed by exactly one space is a syntax error.
 
+## Subcommand Execution (`#|` and `#$` lines)
+
+> **Security notice:** `#|` and `#$` lines execute subcommands during header
+> processing, before the main interpreter is launched. Do not run herescript
+> scripts from untrusted sources.
+
+Herescript can run subcommands at header-processing time and optionally bind
+their captured output to environment variables, similar to shell `$(...)`
+substitution. Trailing newlines are stripped from captured output, matching
+shell convention. If a subcommand exits with a non-zero status, herescript
+stops with exit code 6.
+
+`#|` and `#$` lines tokenise their command line in the same way as `#:` lines
+(full quoting and substitution), excluding the trailing `=> NAME` suffix.
+Both are forbidden inside `--load-file` files. `--dry-run` suppresses
+subcommand execution. All header effects are applied immediately and in order;
+a subcommand can only see environment variables and options set before it in
+the header.
+
+### `#|` — Pipe a `#>` block through a command
+
+A `#|` line must immediately follow a run of `#>` lines. It pipes the
+accumulated block content through the named command and optionally binds the
+captured output to an environment variable:
+
+```
+#> date
+#| bash => NOW
+```
+
+| Form                      | Effect |
+|---------------------------|--------|
+| `#| CMD ARGS... => NAME`  | Pipe block through CMD; capture stdout and bind to `$NAME`. |
+| `#| CMD ARGS...`          | Pipe block through CMD; stdout inherited (side effect). |
+| `#| => NAME`              | Bind block content directly to `$NAME` (no command run). |
+
+### `#$` — Run a command independently
+
+`#$` runs a command with stdin connected to `/dev/null`. No preceding `#>`
+block is needed. The command is mandatory (omitting it is a parse error):
+
+```
+#$ date => NOW
+#$ cp file1 file2
+```
+
+| Form                      | Effect |
+|---------------------------|--------|
+| `#$ CMD ARGS... => NAME`  | Run CMD; capture stdout and bind to `$NAME`. |
+| `#$ CMD ARGS...`          | Run CMD; stdout inherited (side effect). |
+
+### Common behaviour
+
+- Stderr is inherited (passes through to the terminal).
+- Stdout is captured when `=> NAME` is present; otherwise inherited.
+- `=> NAME` and `=> NAME` (with space) are both accepted.
+
 ## In-file Options (`#!` lines)
 
 `#!` lines after the shebang configure herescript behaviour. Options are
@@ -128,7 +188,7 @@ as a separate token or with `=`:
 | `--path-prepend DIRECTORY`   | Prepend `DIRECTORY` to `PATH`; `DIRECTORY` must exist and is converted to an absolute path. The canonical way to activate a virtualenv or local toolchain without sourcing shell scripts. |
 | `--umask MASK`               | Set the file creation mask (octal, e.g. `027`) before exec; useful for scripts that create files. |
 | `--unset VAR`                | Remove the environment variable `VAR` before exec; useful for scrubbing sensitive inherited variables. By default an error if `VAR` is not set; see `--unset-undefined`. |
-| `--unset-undefined MODE`     | Controls behaviour when `--unset` names a variable that is not defined. `MODE` is one of `error` (default — halt with an error), `warning` (print a warning and continue), or `allow` (continue silently). Applies to all `--unset` directives in the file regardless of order. |
+| `--unset-undefined MODE`     | Controls behaviour when `--unset` names a variable that is not defined. `MODE` is one of `error` (default — halt with an error), `warning` (print a warning and continue), or `allow` (continue silently). Must precede the `--unset` directives it governs. |
 
 ## Special Environment Variables
 
