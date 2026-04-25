@@ -925,7 +925,7 @@ tests:
       HERESCRIPT_SHOW_CWD: "1"
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! --chdir /tmp
+      #! --chdir ${BUILD_DIR}
     output: |
       {
           "env": [
@@ -936,7 +936,7 @@ tests:
           "argv": [
               "${BUILD_DIR}/test-herescript"
           ],
-          "cwd": "/tmp"
+          "cwd": "${BUILD_DIR}"
       }
 
   - name: option-chdir-equals
@@ -945,7 +945,7 @@ tests:
       HERESCRIPT_SHOW_CWD: "1"
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! --chdir=/tmp
+      #! --chdir=${BUILD_DIR}
     output: |
       {
           "env": [
@@ -956,7 +956,7 @@ tests:
           "argv": [
               "${BUILD_DIR}/test-herescript"
           ],
-          "cwd": "/tmp"
+          "cwd": "${BUILD_DIR}"
       }
 
   - name: load-file-source
@@ -1110,13 +1110,13 @@ tests:
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #! --path-prepend=${BUILD_DIR}
-      #! --path-prepend=/tmp
+      #! --path-prepend=/
     output: |
       {
           "env": [
               "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
               "HERESCRIPT_FILE=${BUILD_DIR}/option-path-prepend-multiple.sh",
-              "PATH=/tmp:${BUILD_DIR}:/usr/bin"
+              "PATH=/:${BUILD_DIR}:/usr/bin"
           ],
           "argv": [
               "${BUILD_DIR}/test-herescript"
