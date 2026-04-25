@@ -869,14 +869,24 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
     // No else-error: missing => NAME is valid (side-effect form, stdout inherited).
 
     if (cmd_tokens.count == 0) {
-        if (name) {
-            fprintf(stderr, "herescript: #| requires a command before '=> %s'\n", name);
-        } else {
-            fprintf(stderr, "herescript: #| requires a command\n");
+        if (name == NULL) {
+            fprintf(stderr, "herescript: #| with no command requires '=> NAME'\n");
+            free(cmd_tokens.items);
+            return EXIT_INVALID_HEADER;
+        }
+        // No command: bind the #> block content directly to NAME unchanged.
+        if (!rs->dry_run) {
+            const char *value = (input_content != NULL) ? input_content : "";
+            if (setenv(name, value, 1) != 0) {
+                perror("herescript: setenv");
+                free(name);
+                free(cmd_tokens.items);
+                return EXIT_GENERAL_ERROR;
+            }
         }
         free(name);
         free(cmd_tokens.items);
-        return EXIT_INVALID_HEADER;
+        return 0;
     }
 
     if (rs->dry_run) {

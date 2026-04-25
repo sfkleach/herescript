@@ -1533,3 +1533,52 @@ tests:
       #> hello
       #| false
     exit_code: 6
+
+  - name: pipe-line-no-command-bind
+    description: "#| => NAME with no command binds the #> block content directly to NAME"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #> Mary has a little lamb
+      #> Its fleece was white as snow
+      #| => POETRY
+      #: ${POETRY}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT0=Mary has a little lamb\nIts fleece was white as snow",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/pipe-line-no-command-bind.sh",
+              "POETRY=Mary has a little lamb\nIts fleece was white as snow"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "Mary has a little lamb\nIts fleece was white as snow"
+          ]
+      }
+
+  - name: pipe-line-no-command-dry-run
+    description: "#| => NAME with --dry-run skips the binding"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --dry-run
+      #> hello
+      #| => RESULT
+    output: |
+      {
+          "env": [
+              "HERESCRIPT0=hello",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/pipe-line-no-command-dry-run.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: pipe-line-no-command-no-name-error
+    description: "#| with neither command nor => NAME is a parse error"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #> hello
+      #|
+    exit_code: 4
