@@ -6,7 +6,19 @@ Following the style in https://keepachangelog.com/en/1.0.0/
 
 ### Added
 
-To be completed ...
+- `--unset` now validates variable names at parse time; empty names and names
+  containing `=` are rejected with exit code 4 rather than silently failing in
+  `unsetenv()`.
+- `--unset-undefined MODE` (or `--unset-undefined=MODE`) — controls what
+  happens when `--unset` names a variable that is not defined: `error` (default,
+  halt), `warning` (print to stderr and continue), or `allow` (silent continue).
+  Applies globally to all `--unset` directives in the file.
+
+### Changes
+
+- Previous uses of `--unset NAME` allowed NAME to be undefined. By default this
+  is now an error. Use `--unset-undefined=allow` for compatibility with the 
+  old behaviour.
 
 ## v0.2.0, 2026-04-24
 
@@ -21,7 +33,7 @@ To be completed ...
   - `--umask MASK` (or `--umask=MASK`) — set the file creation mask (octal)
     before exec.
   - `--unset VAR` (or `--unset=VAR`) — remove an inherited environment variable
-    before exec; not an error if the variable is not set.
+    before exec.
 
 ## v0.1.1, 2026-04-18
 

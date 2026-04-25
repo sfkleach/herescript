@@ -198,6 +198,12 @@ static void maybe_token_is_token(MaybeToken *mt) {
 // RunState
 // ============================================================================
 
+typedef enum {
+    UNSET_UNDEFINED_ERROR,    // --unset of undefined var is a fatal error (default).
+    UNSET_UNDEFINED_WARNING,  // --unset of undefined var prints a warning and continues.
+    UNSET_UNDEFINED_ALLOW,    // --unset of undefined var is silently ignored.
+} UnsetUndefined;
+
 // All mutable state for a single herescript invocation.
 typedef struct {
     StringArray  arguments;
@@ -210,7 +216,8 @@ typedef struct {
     bool         dry_run;          // If true, print exec args/env instead of running.
     mode_t       umask_value;      // File creation mask to apply before exec.
     bool         umask_set;        // True if --umask was specified.
-    StringArray  unset_vars;       // Environment variables to unset before exec.
+    StringArray    unset_vars;       // Environment variables to unset before exec.
+    UnsetUndefined unset_undefined;  // Behaviour when an --unset target is not defined.
 } RunState;
 
 static void run_state_init(RunState *rs) {
@@ -225,6 +232,7 @@ static void run_state_init(RunState *rs) {
     rs->umask_value = 0;
     rs->umask_set = false;
     init_string_array(&rs->unset_vars, 4);
+    rs->unset_undefined = UNSET_UNDEFINED_ERROR;
 }
 
 // Bind HERESCRIPT_FILE in the process environment so that the subprocess
@@ -301,7 +309,18 @@ static int run_state_exec(RunState * rs) {
     }
 
     for (size_t i = 0; i < rs->unset_vars.count; i++) {
-        unsetenv(rs->unset_vars.items[i]);
+        const char *name = rs->unset_vars.items[i];
+        if (getenv(name) == NULL) {
+            if (rs->unset_undefined == UNSET_UNDEFINED_ERROR) {
+                fprintf(stderr, "herescript: --unset: '%s' is not defined\n", name);
+                return EXIT_GENERAL_ERROR;
+            }
+            if (rs->unset_undefined == UNSET_UNDEFINED_WARNING) {
+                fprintf(stderr, "herescript: --unset: warning: '%s' is not defined\n", name);
+            }
+        } else {
+            unsetenv(name);
+        }
     }
 
     if (rs->dry_run) {
@@ -909,6 +928,24 @@ static int process_bang_option(RunState *rs, const char *tok_start, size_t tok_l
         rs->chdir_target = dir;
         return 0;
     }
+    if (tok_len >= 17 && strncmp(tok_start, "--unset-undefined", 17) == 0) {
+        char *mode_str;
+        int rc = extract_option_argument("--unset-undefined", tok_start, tok_len, cursor, &mode_str);
+        if (rc != 0) return rc;
+        if (strcmp(mode_str, "error") == 0) {
+            rs->unset_undefined = UNSET_UNDEFINED_ERROR;
+        } else if (strcmp(mode_str, "warning") == 0) {
+            rs->unset_undefined = UNSET_UNDEFINED_WARNING;
+        } else if (strcmp(mode_str, "allow") == 0) {
+            rs->unset_undefined = UNSET_UNDEFINED_ALLOW;
+        } else {
+            fprintf(stderr, "herescript: --unset-undefined: invalid mode '%s' (expected error, warning, or allow)\n", mode_str);
+            free(mode_str);
+            return EXIT_INVALID_HEADER;
+        }
+        free(mode_str);
+        return 0;
+    }
     if (tok_len >= 7 && strncmp(tok_start, "--unset", 7) == 0) {
         char *var_name;
         int rc = extract_option_argument("--unset", tok_start, tok_len, cursor, &var_name);
@@ -927,11 +964,12 @@ static int process_bang_option(RunState *rs, const char *tok_start, size_t tok_l
 
 // Process a #! options line. Tokens are extracted by simple whitespace splitting
 // and dispatched via process_bang_option.
-// Supports: --chdir DIRECTORY        or  --chdir=DIRECTORY
-//           --load-file FILE         or  --load-file=FILE
-//           --path-prepend DIRECTORY or  --path-prepend=DIRECTORY
-//           --umask MASK             or  --umask=MASK
-//           --unset VAR              or  --unset=VAR
+// Supports: --chdir DIRECTORY                    or  --chdir=DIRECTORY
+//           --load-file FILE                      or  --load-file=FILE
+//           --path-prepend DIRECTORY              or  --path-prepend=DIRECTORY
+//           --umask MASK                          or  --umask=MASK
+//           --unset-undefined (error|warning|allow) or --unset-undefined=MODE
+//           --unset VAR                           or  --unset=VAR
 //           --dry-run
 static int run_state_process_bang_line(RunState *rs, const char *line) {
     const char *cursor = line + 2;  // Skip "#!" prefix.

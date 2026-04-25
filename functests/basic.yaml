@@ -1248,10 +1248,10 @@ tests:
       }
 
   - name: option-unset-missing
-    description: "#! --unset VAR is not an error when the variable is not set"
+    description: "--unset-undefined=allow silently ignores a variable that is not set"
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! --unset HERESCRIPT_NO_SUCH_VAR
+      #! --unset-undefined=allow --unset HERESCRIPT_NO_SUCH_VAR
     output: |
       {
           "env": [
@@ -1283,3 +1283,98 @@ tests:
       #!${BUILD_DIR}/herescript echo
       #! --unset FOO=BAR
     exit_code: 4
+
+  - name: option-unset-undefined-default-error
+    description: "--unset of an undefined variable exits with an error by default"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --unset HERESCRIPT_NO_SUCH_VAR_XYZ
+    exit_code: 1
+
+  - name: option-unset-undefined-warning
+    description: "--unset-undefined=warning prints a warning but continues"
+    env:
+      HERESCRIPT_UNSET_ME: "bye"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --unset-undefined=warning
+      #! --unset HERESCRIPT_NO_SUCH_VAR_XYZ
+      #! --unset HERESCRIPT_UNSET_ME
+    stderr: "herescript: --unset: warning: 'HERESCRIPT_NO_SUCH_VAR_XYZ' is not defined"
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-unset-undefined-warning.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: option-unset-undefined-allow
+    description: "--unset-undefined=allow silently ignores undefined variables"
+    env:
+      HERESCRIPT_UNSET_ME: "bye"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --unset-undefined=allow
+      #! --unset HERESCRIPT_NO_SUCH_VAR_XYZ
+      #! --unset HERESCRIPT_UNSET_ME
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-unset-undefined-allow.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: option-unset-undefined-invalid-mode
+    description: "--unset-undefined with an unrecognised mode exits with an error"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --unset-undefined=ignore
+    exit_code: 4
+
+  - name: option-unset-undefined-space-form
+    description: "--unset-undefined MODE (space form) is accepted"
+    env:
+      HERESCRIPT_UNSET_ME: "bye"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --unset-undefined allow
+      #! --unset HERESCRIPT_NO_SUCH_VAR_XYZ
+      #! --unset HERESCRIPT_UNSET_ME
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-unset-undefined-space-form.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: option-unset-undefined-applies-globally
+    description: "--unset-undefined applies to all --unset directives regardless of order"
+    env:
+      HERESCRIPT_UNSET_ME: "bye"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --unset HERESCRIPT_NO_SUCH_VAR_XYZ
+      #! --unset-undefined=allow
+      #! --unset HERESCRIPT_UNSET_ME
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/option-unset-undefined-applies-globally.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
