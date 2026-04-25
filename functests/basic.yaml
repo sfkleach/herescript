@@ -1269,3 +1269,17 @@ tests:
       #!${BUILD_DIR}/herescript echo
       #! --unset
     exit_code: 4
+
+  - name: option-unset-empty-name
+    description: "--unset with an empty name (--unset=) exits with an error"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --unset=
+    exit_code: 4
+
+  - name: option-unset-name-with-equals
+    description: "--unset with a name containing '=' exits with an error"
+    script: |
+      #!${BUILD_DIR}/herescript echo
+      #! --unset FOO=BAR
+    exit_code: 4

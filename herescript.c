@@ -913,6 +913,11 @@ static int process_bang_option(RunState *rs, const char *tok_start, size_t tok_l
         char *var_name;
         int rc = extract_option_argument("--unset", tok_start, tok_len, cursor, &var_name);
         if (rc != 0) return rc;
+        if (*var_name == '\0' || strchr(var_name, '=') != NULL) {
+            fprintf(stderr, "herescript: --unset: invalid variable name '%s'\n", var_name);
+            free(var_name);
+            return EXIT_INVALID_HEADER;
+        }
         append_string_array(&rs->unset_vars, var_name);
         return 0;
     }

@@ -17,12 +17,12 @@ a universally lenient default would silently mask mistakes.
 
 Options that operate on potentially-absent resources should offer a companion
 modifier that the author can declare in the `#!` header. The modifier defaults
-to `error` (strict), but the author can opt into `warning` or `silent` within
+to `error` (strict), but the author can opt into `warning` or `allow` within
 the single file itself.
 
-For example, the planned `--unset-undefined=(error|warning|silent)` modifier
+For example, the planned `--unset-undefined=(error|warning|allow)` modifier
 governs `--unset`: by default the script errors if the named variable is not
-set, but writing `#! --unset-undefined=silent` ahead of the `--unset` directives
+set, but writing `#! --unset-undefined=allow` ahead of the `--unset` directives
 expresses the lenient intent explicitly and keeps the script self-contained.
 
 ## Rationale
