@@ -1,4 +1,4 @@
-# New conventions!
+# New conventions!, 2026-02-21
 
 After some thought we have stumbled over a better design. We will initially
 implement in parallel with the existing `#!` prefix but once established we

@@ -1,4 +1,4 @@
-# The --help option
+# The --help option, 2026-02-19
 
 ## Goal
 

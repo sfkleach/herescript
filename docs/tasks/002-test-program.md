@@ -1,4 +1,4 @@
-# test-herescript.c
+# test-herescript.c, 2026-01-12
 
 `test-herescript.c` is a small command-line C program that we use for testing the
 behaviour of herescript. It accepts any number of arguments. It then writes to

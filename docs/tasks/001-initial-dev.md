@@ -1,4 +1,4 @@
-# Initial development of herescript
+# Initial development of herescript, 2026-01-11
 
 `herescript` is a modern, structured interpreter launcher designed to extend the limited Unix shebang mechanism. It provides:
 

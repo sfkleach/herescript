@@ -1,4 +1,4 @@
-# Task: in-file options for herescript
+# Task: in-file options for herescript, 2026-04-18
 
 The concept is that we can set options that customise herescript. These
 appear in the script after a header-line like this:

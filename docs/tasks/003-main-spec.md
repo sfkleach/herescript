@@ -1,4 +1,4 @@
-# herescript Execution Specification
+# herescript Execution Specification, 2026-01-12
 
 ## 1. Overview
 
