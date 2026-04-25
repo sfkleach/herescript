@@ -1360,13 +1360,13 @@ tests:
       }
 
   - name: option-unset-undefined-applies-globally
-    description: "--unset-undefined applies to all --unset directives regardless of order"
+    description: "--unset-undefined must precede the --unset directives it governs"
     env:
       HERESCRIPT_UNSET_ME: "bye"
     script: |
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
-      #! --unset HERESCRIPT_NO_SUCH_VAR_XYZ
       #! --unset-undefined=allow
+      #! --unset HERESCRIPT_NO_SUCH_VAR_XYZ
       #! --unset HERESCRIPT_UNSET_ME
     output: |
       {
@@ -1378,3 +1378,132 @@ tests:
               "${BUILD_DIR}/test-herescript"
           ]
       }
+
+  - name: pipe-line-basic
+    description: "#| pipes a #> block through a command and binds the output to a name (space form)"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #> hello world
+      #| tr a-z A-Z => RESULT
+      #: ${RESULT}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT0=hello world",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/pipe-line-basic.sh",
+              "RESULT=HELLO WORLD"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "HELLO WORLD"
+          ]
+      }
+
+  - name: pipe-line-compact-arrow
+    description: "#| with =>NAME (no space before NAME) also works"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #> hello world
+      #| tr a-z A-Z =>RESULT
+      #: ${RESULT}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT0=hello world",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/pipe-line-compact-arrow.sh",
+              "RESULT=HELLO WORLD"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "HELLO WORLD"
+          ]
+      }
+
+  - name: pipe-line-strips-trailing-newlines
+    description: "#| output has trailing newlines stripped (like shell command substitution)"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #> hello
+      #| cat => OUT
+      #: ${OUT}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT0=hello",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/pipe-line-strips-trailing-newlines.sh",
+              "OUT=hello"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello"
+          ]
+      }
+
+  - name: pipe-line-block-still-bound
+    description: "#| does not consume the #> block; HERESCRIPT<N> is still bound"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #> original
+      #| cat => COPY
+      #: ${HERESCRIPT0} ${COPY}
+    output: |
+      {
+          "env": [
+              "COPY=original",
+              "HERESCRIPT0=original",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/pipe-line-block-still-bound.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "original",
+              "original"
+          ]
+      }
+
+  - name: pipe-line-no-preceding-block-error
+    description: "#| without a preceding #> block is a parse error"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #| cat => OUT
+    exit_code: 4
+
+  - name: pipe-line-subcommand-failure
+    description: "#| subcommand that exits non-zero causes herescript to fail with exit code 6"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #> hello
+      #| false => OUT
+    exit_code: 6
+
+  - name: pipe-line-dry-run-skips-execution
+    description: "#| subcommand is not executed when --dry-run is set"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --dry-run
+      #> hello
+      #| tr a-z A-Z => RESULT
+    output: |
+      {
+          "env": [
+              "HERESCRIPT0=hello",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/pipe-line-dry-run-skips-execution.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: pipe-line-in-load-file-rejected
+    description: "#| in a load file is a parse error"
+    fixture: |
+      PIPE_LOAD=pipe_load_fixture.env
+      printf '#| cat => OUT\n' > "${FIXTURE_DIR}/${PIPE_LOAD}"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --load-file ${FIXTURE_DIR}/${PIPE_LOAD}
+    exit_code: 4

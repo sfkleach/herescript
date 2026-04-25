@@ -3,6 +3,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <stdbool.h>
@@ -17,6 +18,7 @@ extern char **environ;
 #define EXIT_MALFORMED_SHEBANG 3
 #define EXIT_INVALID_HEADER 4
 #define EXIT_EXEC_FAILURE 5
+#define EXIT_SUBCOMMAND_FAILURE 6
 
 // Maximum length accepted for the shebang line. The shebang is structurally
 // bounded by #! + herescript-path + space + executable-path, so 3 + 2*PATH_MAX
@@ -206,18 +208,14 @@ typedef enum {
 
 // All mutable state for a single herescript invocation.
 typedef struct {
-    StringArray  arguments;
-    char        *script_path;      // Resolved (realpath) path to the script file.
-    char        *executable;       // The interpreter to exec.
-    char       **user_params;      // Points into argv at the first user-supplied argument.
-    int          user_param_count; // Number of user-supplied arguments.
-    int          inline_arg_count; // Counter for HERESCRIPT0, HERESCRIPT1, etc.
-    char        *chdir_target;     // Directory to chdir into before exec, or NULL.
-    bool         dry_run;          // If true, print exec args/env instead of running.
-    mode_t       umask_value;      // File creation mask to apply before exec.
-    bool         umask_set;        // True if --umask was specified.
-    StringArray    unset_vars;       // Environment variables to unset before exec.
-    UnsetUndefined unset_undefined;  // Behaviour when an --unset target is not defined.
+    StringArray    arguments;
+    char          *script_path;      // Resolved (realpath) path to the script file.
+    char          *executable;       // The interpreter to exec.
+    char         **user_params;      // Points into argv at the first user-supplied argument.
+    int            user_param_count; // Number of user-supplied arguments.
+    int            inline_arg_count; // Counter for HERESCRIPT0, HERESCRIPT1, etc.
+    bool           dry_run;          // If true, print exec args/env instead of running.
+    UnsetUndefined unset_undefined;  // Behaviour when --unset names an undefined variable.
 } RunState;
 
 static void run_state_init(RunState *rs) {
@@ -227,11 +225,7 @@ static void run_state_init(RunState *rs) {
     rs->user_params = NULL;
     rs->user_param_count = 0;
     rs->inline_arg_count = 0;
-    rs->chdir_target = NULL;
     rs->dry_run = false;
-    rs->umask_value = 0;
-    rs->umask_set = false;
-    init_string_array(&rs->unset_vars, 4);
     rs->unset_undefined = UNSET_UNDEFINED_ERROR;
 }
 
@@ -296,33 +290,6 @@ static void run_state_print_dry_run(RunState const *rs) {
 // Build a NULL-terminated argv array from rs->executable followed by all
 // accumulated arguments, then exec the interpreter. Does not return on success.
 static int run_state_exec(RunState * rs) {
-    if (rs->chdir_target != NULL) {
-        if (chdir(rs->chdir_target) != 0) {
-            fprintf(stderr, "herescript: --chdir: ");
-            perror(rs->chdir_target);
-            return EXIT_GENERAL_ERROR;
-        }
-    }
-
-    if (rs->umask_set) {
-        umask(rs->umask_value);
-    }
-
-    for (size_t i = 0; i < rs->unset_vars.count; i++) {
-        const char *name = rs->unset_vars.items[i];
-        if (getenv(name) == NULL) {
-            if (rs->unset_undefined == UNSET_UNDEFINED_ERROR) {
-                fprintf(stderr, "herescript: --unset: '%s' is not defined\n", name);
-                return EXIT_GENERAL_ERROR;
-            }
-            if (rs->unset_undefined == UNSET_UNDEFINED_WARNING) {
-                fprintf(stderr, "herescript: --unset: warning: '%s' is not defined\n", name);
-            }
-        } else {
-            unsetenv(name);
-        }
-    }
-
     if (rs->dry_run) {
         run_state_print_dry_run(rs);
         return EXIT_SUCCESS;
@@ -791,6 +758,12 @@ static int run_state_load_file(RunState *rs, const char *path) {
     size_t line_cap = 0;
     ssize_t line_len;
     while ((line_len = getline(&line, &line_cap, fp)) >= 0) {
+        if (line_len >= 2 && line[0] == '#' && line[1] == '|') {
+            fprintf(stderr, "herescript: --load-file: #| is not permitted in load files\n");
+            free(line);
+            fclose(fp);
+            return EXIT_INVALID_HEADER;
+        }
         if (line_len >= 2 && line[0] == '#' && line[1] == ':') {
             run_state_process_colon_line(rs, line);
         }
@@ -843,6 +816,195 @@ static int run_state_path_prepend(RunState const *rs, const char *dir) {
     free(abs);
     free(new_path);
     return rc;
+}
+
+// Execute a subcommand for a #| line. input_content is the content of the
+// preceding #> block (already bound to HERESCRIPT<N>). Tokenises cmd_line
+// like a #: line, strips the trailing "=> NAME" (required for Step 1), forks
+// a child with stdin fed from input_content, captures stdout, strips trailing
+// newlines, and binds the result to NAME via setenv(). Returns 0 on success or
+// an appropriate exit code on failure.
+static int run_state_process_pipe_line(RunState *rs, const char *line, const char *input_content) {
+    // Temporarily redirect rs->arguments so the colon-line tokenizer writes to
+    // a local array instead of accumulating into the real argument list.
+    StringArray saved_args = rs->arguments;
+    StringArray cmd_tokens;
+    init_string_array(&cmd_tokens, 8);
+    rs->arguments = cmd_tokens;
+
+    // Build a synthetic "#:" prefix so run_state_process_colon_line can parse
+    // the content (everything after the "#|" prefix).
+    const char *suffix = line + 2;
+    size_t suffix_len = strlen(suffix);
+    char *fake_line = malloc(suffix_len + 3);
+    if (!fake_line) { perror("malloc"); exit(EXIT_GENERAL_ERROR); }
+    fake_line[0] = '#'; fake_line[1] = ':';
+    memcpy(fake_line + 2, suffix, suffix_len + 1);
+    run_state_process_colon_line(rs, fake_line);
+    free(fake_line);
+
+    // Collect tokenized results and restore rs->arguments.
+    cmd_tokens = rs->arguments;
+    rs->arguments = saved_args;
+
+    size_t n = cmd_tokens.count;
+
+    // Extract trailing "=> NAME" or "=>NAME" from the token list.
+    char *name = NULL;
+    if (n >= 2 && strcmp(cmd_tokens.items[n-2], "=>") == 0
+               && is_identifier(cmd_tokens.items[n-1], strlen(cmd_tokens.items[n-1]))) {
+        // Form: cmd ... => NAME
+        name = cmd_tokens.items[n-1];
+        free(cmd_tokens.items[n-2]);
+        cmd_tokens.count -= 2;
+    } else if (n >= 1 && strncmp(cmd_tokens.items[n-1], "=>", 2) == 0
+               && is_identifier(cmd_tokens.items[n-1]+2, strlen(cmd_tokens.items[n-1]+2))) {
+        // Form: cmd ... =>NAME
+        name = strdup_safe(cmd_tokens.items[n-1] + 2);
+        free(cmd_tokens.items[n-1]);
+        cmd_tokens.count--;
+    } else {
+        fprintf(stderr, "herescript: #| requires a '=> NAME' target\n");
+        for (size_t i = 0; i < cmd_tokens.count; i++) free(cmd_tokens.items[i]);
+        free(cmd_tokens.items);
+        return EXIT_INVALID_HEADER;
+    }
+
+    if (cmd_tokens.count == 0) {
+        fprintf(stderr, "herescript: #| requires a command before '=> %s'\n", name);
+        free(name);
+        free(cmd_tokens.items);
+        return EXIT_INVALID_HEADER;
+    }
+
+    if (rs->dry_run) {
+        free(name);
+        for (size_t i = 0; i < cmd_tokens.count; i++) free(cmd_tokens.items[i]);
+        free(cmd_tokens.items);
+        return 0;
+    }
+
+    // Build NULL-terminated argv for the child.
+    append_string_array(&cmd_tokens, NULL);
+    char **cmd_argv = cmd_tokens.items;
+    size_t cmd_count = cmd_tokens.count - 1; // excluding NULL sentinel
+
+    // Create stdin and stdout pipes.
+    int stdin_pipe[2], stdout_pipe[2];
+    if (pipe(stdin_pipe) != 0) {
+        perror("herescript: pipe");
+        free(name);
+        free(cmd_argv);
+        return EXIT_GENERAL_ERROR;
+    }
+    if (pipe(stdout_pipe) != 0) {
+        perror("herescript: pipe");
+        close(stdin_pipe[0]); close(stdin_pipe[1]);
+        free(name);
+        free(cmd_argv);
+        return EXIT_GENERAL_ERROR;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("herescript: fork");
+        close(stdin_pipe[0]); close(stdin_pipe[1]);
+        close(stdout_pipe[0]); close(stdout_pipe[1]);
+        free(name);
+        free(cmd_argv);
+        return EXIT_GENERAL_ERROR;
+    }
+
+    if (pid == 0) {
+        // Child: wire up pipes and exec.
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        if (dup2(stdin_pipe[0], STDIN_FILENO) < 0 || dup2(stdout_pipe[1], STDOUT_FILENO) < 0) {
+            perror("herescript: dup2");
+            exit(EXIT_GENERAL_ERROR);
+        }
+        close(stdin_pipe[0]);
+        close(stdout_pipe[1]);
+        if (strchr(cmd_argv[0], '/')) {
+            execve(cmd_argv[0], cmd_argv, environ);
+        } else {
+            execvp(cmd_argv[0], cmd_argv);
+        }
+        perror("herescript: #| exec");
+        exit(EXIT_EXEC_FAILURE);
+    }
+
+    // Parent: write input, read output.
+    close(stdin_pipe[0]);
+    close(stdout_pipe[1]);
+
+    // Write block content to child's stdin (add trailing newline).
+    // Ignore partial-write errors: if the child dies early we'll catch it via waitpid.
+    if (input_content && *input_content) {
+        size_t in_len = strlen(input_content);
+        ssize_t nw = write(stdin_pipe[1], input_content, in_len);
+        if (nw > 0) {
+            nw = write(stdin_pipe[1], "\n", 1);
+        }
+        (void)nw;
+    }
+    close(stdin_pipe[1]);
+
+    // Collect child stdout.
+    MaybeToken out_buf;
+    maybe_token_init(&out_buf, 1024);
+    char read_buf[4096];
+    ssize_t nr;
+    while ((nr = read(stdout_pipe[0], read_buf, sizeof(read_buf))) > 0) {
+        for (ssize_t i = 0; i < nr; i++) {
+            maybe_token_append(&out_buf, read_buf[i]);
+        }
+    }
+    close(stdout_pipe[0]);
+
+    // Wait for child.
+    int status;
+    waitpid(pid, &status, 0);
+
+    int exit_rc = 0;
+    if (WIFSIGNALED(status)) {
+        fprintf(stderr, "herescript: #| subcommand killed by signal %d\n", WTERMSIG(status));
+        exit_rc = EXIT_SUBCOMMAND_FAILURE;
+    } else if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+        fprintf(stderr, "herescript: #| subcommand failed with exit code %d\n", WEXITSTATUS(status));
+        exit_rc = EXIT_SUBCOMMAND_FAILURE;
+    }
+
+    if (exit_rc != 0) {
+        maybe_token_free(&out_buf);
+        free(name);
+        for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
+        free(cmd_argv);
+        return exit_rc;
+    }
+
+    // Strip trailing CR/LF (match shell $(...) behaviour).
+    while (out_buf.len > 0 && (out_buf.data[out_buf.len-1] == '\n' || out_buf.data[out_buf.len-1] == '\r')) {
+        out_buf.len--;
+    }
+
+    // Bind output to NAME.
+    maybe_token_is_token(&out_buf);
+    char *output = maybe_token_take(&out_buf);
+    maybe_token_free(&out_buf);
+    if (setenv(name, output, 1) != 0) {
+        perror("herescript: setenv");
+        free(output);
+        free(name);
+        for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
+        free(cmd_argv);
+        return EXIT_GENERAL_ERROR;
+    }
+    free(output);
+    free(name);
+    for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
+    free(cmd_argv);
+    return 0;
 }
 
 // Extract the argument for a long option that accepts either "--opt VALUE" or
@@ -907,8 +1069,7 @@ static int process_bang_option(RunState *rs, const char *tok_start, size_t tok_l
             free(mask_str);
             return EXIT_INVALID_HEADER;
         }
-        rs->umask_value = (mode_t)val;
-        rs->umask_set = true;
+        umask((mode_t)val);
         free(mask_str);
         return 0;
     }
@@ -924,8 +1085,13 @@ static int process_bang_option(RunState *rs, const char *tok_start, size_t tok_l
         char *dir;
         int rc = extract_option_argument("--chdir", tok_start, tok_len, cursor, &dir);
         if (rc != 0) return rc;
-        free(rs->chdir_target);
-        rs->chdir_target = dir;
+        if (chdir(dir) != 0) {
+            fprintf(stderr, "herescript: --chdir: ");
+            perror(dir);
+            free(dir);
+            return EXIT_GENERAL_ERROR;
+        }
+        free(dir);
         return 0;
     }
     if (tok_len >= 17 && strncmp(tok_start, "--unset-undefined", 17) == 0) {
@@ -955,7 +1121,19 @@ static int process_bang_option(RunState *rs, const char *tok_start, size_t tok_l
             free(var_name);
             return EXIT_INVALID_HEADER;
         }
-        append_string_array(&rs->unset_vars, var_name);
+        if (getenv(var_name) == NULL) {
+            if (rs->unset_undefined == UNSET_UNDEFINED_ERROR) {
+                fprintf(stderr, "herescript: --unset: '%s' is not defined\n", var_name);
+                free(var_name);
+                return EXIT_GENERAL_ERROR;
+            }
+            if (rs->unset_undefined == UNSET_UNDEFINED_WARNING) {
+                fprintf(stderr, "herescript: --unset: warning: '%s' is not defined\n", var_name);
+            }
+        } else {
+            unsetenv(var_name);
+        }
+        free(var_name);
         return 0;
     }
     fprintf(stderr, "herescript: unrecognised option: %.*s\n", (int)tok_len, tok_start);
@@ -1143,10 +1321,11 @@ int main(int argc, char **argv) {
     maybe_token_init(&inline_buf, 256);
 
     while ((line_len = getline(&line, &line_cap, fp)) >= 0) {
-        // Check if this is a header line? If not, we're done parsing headers and can move on to execution. 
+        // Check if this is a header line? If not, we're done parsing headers and can move on to execution.
         if (line_len < 2 || line[0] != '#') break;
 
         // A non-#> header line ends any in-progress inline argument.
+        bool just_flushed_inline = false;
         if (line[1] != '>' && inline_buf.is_token) {
             char *value = maybe_token_take(&inline_buf);
             char env_name[32];
@@ -1160,6 +1339,7 @@ int main(int argc, char **argv) {
                 return EXIT_GENERAL_ERROR;
             }
             free(value);
+            just_flushed_inline = true;
         }
 
         switch (line[1]) {
@@ -1205,6 +1385,26 @@ int main(int argc, char **argv) {
                     fclose(fp);
                     free(line);
                     return bang_rc;
+                }
+                break;
+            }
+            case '|': {
+                if (!just_flushed_inline) {
+                    fprintf(stderr, "herescript: #| must immediately follow a #> block\n");
+                    maybe_token_free(&inline_buf);
+                    fclose(fp);
+                    free(line);
+                    return EXIT_INVALID_HEADER;
+                }
+                char block_env[32];
+                snprintf(block_env, sizeof(block_env), "HERESCRIPT%d", rs.inline_arg_count - 1);
+                const char *block_content = getenv(block_env);
+                int pipe_rc = run_state_process_pipe_line(&rs, line, block_content);
+                if (pipe_rc != 0) {
+                    maybe_token_free(&inline_buf);
+                    fclose(fp);
+                    free(line);
+                    return pipe_rc;
                 }
                 break;
             }
