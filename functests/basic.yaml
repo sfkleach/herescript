@@ -1582,3 +1582,139 @@ tests:
       #> hello
       #|
     exit_code: 4
+
+  - name: dollar-line-basic
+    description: "#$ runs a command with /dev/null stdin and binds stdout to NAME (space form)"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #$ echo hello => GREETING
+      #: ${GREETING}
+    output: |
+      {
+          "env": [
+              "GREETING=hello",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/dollar-line-basic.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello"
+          ]
+      }
+
+  - name: dollar-line-compact-arrow
+    description: "#$ with =>NAME (no space before NAME) also works"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #$ echo hello =>GREETING
+      #: ${GREETING}
+    output: |
+      {
+          "env": [
+              "GREETING=hello",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/dollar-line-compact-arrow.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "hello"
+          ]
+      }
+
+  - name: dollar-line-no-preceding-block
+    description: "#$ does not require a preceding #> block"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #$ echo standalone => OUT
+      #: ${OUT}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/dollar-line-no-preceding-block.sh",
+              "OUT=standalone"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "standalone"
+          ]
+      }
+
+  - name: dollar-line-side-effect
+    description: "#$ without => NAME runs for side-effect; no binding created"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #$ true
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/dollar-line-side-effect.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: dollar-line-failure
+    description: "#$ subcommand that exits non-zero causes herescript to fail with exit code 6"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #$ false => OUT
+    exit_code: 6
+
+  - name: dollar-line-no-command-error
+    description: "#$ with no command is a parse error"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #$
+    exit_code: 4
+
+  - name: dollar-line-dry-run-skips-execution
+    description: "#$ subcommand is not executed when --dry-run is set"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --dry-run
+      #$ echo hello => GREETING
+    output: |
+      {
+          "env": [
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/dollar-line-dry-run-skips-execution.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: dollar-line-in-load-file-rejected
+    description: "#$ in a load file is a parse error"
+    fixture: |
+      DOLLAR_LOAD=dollar_load_fixture.env
+      printf '#$ echo hi => OUT\n' > "${FIXTURE_DIR}/${DOLLAR_LOAD}"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #! --load-file ${FIXTURE_DIR}/${DOLLAR_LOAD}
+    exit_code: 4
+
+  - name: dollar-line-preceding-block-still-bound
+    description: "when #$ follows a #> block, the block is still bound to HERESCRIPT<N>"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #> block content
+      #$ echo new => OUT
+      #: ${HERESCRIPT0} ${OUT}
+    output: |
+      {
+          "env": [
+              "HERESCRIPT0=block content",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/dollar-line-preceding-block-still-bound.sh",
+              "OUT=new"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript",
+              "block content",
+              "new"
+          ]
+      }

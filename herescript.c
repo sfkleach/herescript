@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <ctype.h>
 #include <stdbool.h>
 #include <limits.h>
@@ -758,8 +759,8 @@ static int run_state_load_file(RunState *rs, const char *path) {
     size_t line_cap = 0;
     ssize_t line_len;
     while ((line_len = getline(&line, &line_cap, fp)) >= 0) {
-        if (line_len >= 2 && line[0] == '#' && line[1] == '|') {
-            fprintf(stderr, "herescript: --load-file: #| is not permitted in load files\n");
+        if (line_len >= 2 && line[0] == '#' && (line[1] == '|' || line[1] == '$')) {
+            fprintf(stderr, "herescript: --load-file: #%c is not permitted in load files\n", line[1]);
             free(line);
             fclose(fp);
             return EXIT_INVALID_HEADER;
@@ -1017,6 +1018,166 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
             free(output);
             free(name);
             maybe_token_free(&out_buf);
+            for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
+            free(cmd_argv);
+            return EXIT_GENERAL_ERROR;
+        }
+        free(output);
+        free(name);
+    }
+    maybe_token_free(&out_buf);
+    for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
+    free(cmd_argv);
+    return 0;
+}
+
+// Execute a subcommand for a #$ line. Unlike #|, no preceding #> block is
+// needed; stdin for the child is /dev/null. The command is mandatory. The
+// optional trailing "=> NAME" suffix controls output capture: when given,
+// stdout is captured, trailing newlines stripped, and the result bound via
+// setenv(); when omitted stdout is inherited. Returns 0 on success or an
+// appropriate exit code on failure.
+static int run_state_process_dollar_line(RunState *rs, const char *line) {
+    // Temporarily redirect rs->arguments for tokenization (same trick as #|).
+    StringArray saved_args = rs->arguments;
+    StringArray cmd_tokens;
+    init_string_array(&cmd_tokens, 8);
+    rs->arguments = cmd_tokens;
+
+    const char *suffix = line + 2;
+    size_t suffix_len = strlen(suffix);
+    char *fake_line = malloc(suffix_len + 3);
+    if (!fake_line) { perror("malloc"); exit(EXIT_GENERAL_ERROR); }
+    fake_line[0] = '#'; fake_line[1] = ':';
+    memcpy(fake_line + 2, suffix, suffix_len + 1);
+    run_state_process_colon_line(rs, fake_line);
+    free(fake_line);
+
+    cmd_tokens = rs->arguments;
+    rs->arguments = saved_args;
+
+    size_t n = cmd_tokens.count;
+
+    // Optionally extract trailing "=> NAME" or "=>NAME".
+    char *name = NULL;
+    if (n >= 2 && strcmp(cmd_tokens.items[n-2], "=>") == 0
+               && is_identifier(cmd_tokens.items[n-1], strlen(cmd_tokens.items[n-1]))) {
+        name = cmd_tokens.items[n-1];
+        free(cmd_tokens.items[n-2]);
+        cmd_tokens.count -= 2;
+    } else if (n >= 1 && strncmp(cmd_tokens.items[n-1], "=>", 2) == 0
+               && is_identifier(cmd_tokens.items[n-1]+2, strlen(cmd_tokens.items[n-1]+2))) {
+        name = strdup_safe(cmd_tokens.items[n-1] + 2);
+        free(cmd_tokens.items[n-1]);
+        cmd_tokens.count--;
+    }
+
+    // Command is mandatory for #$.
+    if (cmd_tokens.count == 0) {
+        fprintf(stderr, "herescript: #$ requires a command\n");
+        free(name);
+        free(cmd_tokens.items);
+        return EXIT_INVALID_HEADER;
+    }
+
+    if (rs->dry_run) {
+        free(name);
+        for (size_t i = 0; i < cmd_tokens.count; i++) free(cmd_tokens.items[i]);
+        free(cmd_tokens.items);
+        return 0;
+    }
+
+    append_string_array(&cmd_tokens, NULL);
+    char **cmd_argv = cmd_tokens.items;
+    size_t cmd_count = cmd_tokens.count - 1;
+
+    // Stdin from /dev/null; stdout pipe only when capturing.
+    int devnull = open("/dev/null", O_RDONLY);
+    if (devnull < 0) {
+        perror("herescript: open /dev/null");
+        free(name); free(cmd_argv);
+        return EXIT_GENERAL_ERROR;
+    }
+    int stdout_pipe[2];
+    stdout_pipe[0] = -1; stdout_pipe[1] = -1;
+    if (name != NULL && pipe(stdout_pipe) != 0) {
+        perror("herescript: pipe");
+        close(devnull); free(name); free(cmd_argv);
+        return EXIT_GENERAL_ERROR;
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("herescript: fork");
+        close(devnull);
+        if (name != NULL) { close(stdout_pipe[0]); close(stdout_pipe[1]); }
+        free(name); free(cmd_argv);
+        return EXIT_GENERAL_ERROR;
+    }
+
+    if (pid == 0) {
+        if (dup2(devnull, STDIN_FILENO) < 0) { perror("herescript: dup2"); exit(EXIT_GENERAL_ERROR); }
+        close(devnull);
+        if (name != NULL) {
+            close(stdout_pipe[0]);
+            if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0) { perror("herescript: dup2"); exit(EXIT_GENERAL_ERROR); }
+            close(stdout_pipe[1]);
+        }
+        if (strchr(cmd_argv[0], '/')) {
+            execve(cmd_argv[0], cmd_argv, environ);
+        } else {
+            execvp(cmd_argv[0], cmd_argv);
+        }
+        perror("herescript: #$ exec");
+        exit(EXIT_EXEC_FAILURE);
+    }
+
+    // Parent.
+    close(devnull);
+    if (name != NULL) close(stdout_pipe[1]);
+
+    MaybeToken out_buf;
+    maybe_token_init(&out_buf, name != NULL ? 1024 : 1);
+    if (name != NULL) {
+        char read_buf[4096];
+        ssize_t nr;
+        while ((nr = read(stdout_pipe[0], read_buf, sizeof(read_buf))) > 0) {
+            for (ssize_t i = 0; i < nr; i++) {
+                maybe_token_append(&out_buf, read_buf[i]);
+            }
+        }
+        close(stdout_pipe[0]);
+    }
+
+    int status;
+    waitpid(pid, &status, 0);
+
+    int exit_rc = 0;
+    if (WIFSIGNALED(status)) {
+        fprintf(stderr, "herescript: #$ subcommand killed by signal %d\n", WTERMSIG(status));
+        exit_rc = EXIT_SUBCOMMAND_FAILURE;
+    } else if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+        fprintf(stderr, "herescript: #$ subcommand failed with exit code %d\n", WEXITSTATUS(status));
+        exit_rc = EXIT_SUBCOMMAND_FAILURE;
+    }
+
+    if (exit_rc != 0) {
+        maybe_token_free(&out_buf);
+        free(name);
+        for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
+        free(cmd_argv);
+        return exit_rc;
+    }
+
+    if (name != NULL) {
+        while (out_buf.len > 0 && (out_buf.data[out_buf.len-1] == '\n' || out_buf.data[out_buf.len-1] == '\r')) {
+            out_buf.len--;
+        }
+        maybe_token_is_token(&out_buf);
+        char *output = maybe_token_take(&out_buf);
+        if (setenv(name, output, 1) != 0) {
+            perror("herescript: setenv");
+            free(output); free(name); maybe_token_free(&out_buf);
             for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
             free(cmd_argv);
             return EXIT_GENERAL_ERROR;
@@ -1428,6 +1589,16 @@ int main(int argc, char **argv) {
                     fclose(fp);
                     free(line);
                     return pipe_rc;
+                }
+                break;
+            }
+            case '$': {
+                int dollar_rc = run_state_process_dollar_line(&rs, line);
+                if (dollar_rc != 0) {
+                    maybe_token_free(&inline_buf);
+                    fclose(fp);
+                    free(line);
+                    return dollar_rc;
                 }
                 break;
             }
