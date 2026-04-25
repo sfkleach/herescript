@@ -819,23 +819,22 @@ static int run_state_path_prepend(RunState const *rs, const char *dir) {
     return rc;
 }
 
-// Execute a subcommand for a #| line. input_content is the content of the
-// preceding #> block (already bound to HERESCRIPT<N>). Tokenises like a #:
-// line, optionally strips a trailing "=> NAME" suffix, forks a child with
-// stdin fed from input_content. When NAME is given, stdout is captured,
-// trailing newlines stripped, and the result bound via setenv(). When NAME is
-// omitted stdout is inherited (passes to the terminal). Returns 0 on success
-// or an appropriate exit code on failure.
-static int run_state_process_pipe_line(RunState *rs, const char *line, const char *input_content) {
-    // Temporarily redirect rs->arguments so the colon-line tokenizer writes to
-    // a local array instead of accumulating into the real argument list.
+// Tokenize a #|/#$ line (everything after the two-char prefix) using the
+// same rules as a #: line, then strip the optional trailing "=> NAME" or
+// "=>NAME" suffix. *out_tokens is populated with the remaining command
+// tokens (heap-allocated, caller-owned). *out_name is set to a heap-allocated
+// identifier when a NAME suffix was found, otherwise NULL.
+static void parse_subcommand_tokens(RunState *rs, const char *line,
+                                     StringArray *out_tokens, char **out_name) {
+    // Temporarily redirect rs->arguments so the colon-line tokenizer writes
+    // to a local array instead of accumulating into the real argument list.
     StringArray saved_args = rs->arguments;
     StringArray cmd_tokens;
     init_string_array(&cmd_tokens, 8);
     rs->arguments = cmd_tokens;
 
     // Build a synthetic "#:" prefix so run_state_process_colon_line can parse
-    // the content (everything after the "#|" prefix).
+    // the content (everything after the "#|" / "#$" prefix).
     const char *suffix = line + 2;
     size_t suffix_len = strlen(suffix);
     char *fake_line = malloc(suffix_len + 3);
@@ -845,14 +844,10 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
     run_state_process_colon_line(rs, fake_line);
     free(fake_line);
 
-    // Collect tokenized results and restore rs->arguments.
     cmd_tokens = rs->arguments;
     rs->arguments = saved_args;
 
     size_t n = cmd_tokens.count;
-
-    // Optionally extract trailing "=> NAME" or "=>NAME" from the token list.
-    // When absent, name stays NULL and stdout is inherited rather than captured.
     char *name = NULL;
     if (n >= 2 && strcmp(cmd_tokens.items[n-2], "=>") == 0
                && is_identifier(cmd_tokens.items[n-1], strlen(cmd_tokens.items[n-1]))) {
@@ -867,77 +862,74 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
         free(cmd_tokens.items[n-1]);
         cmd_tokens.count--;
     }
-    // No else-error: missing => NAME is valid (side-effect form, stdout inherited).
+    *out_tokens = cmd_tokens;
+    *out_name = name;
+}
 
-    if (cmd_tokens.count == 0) {
-        if (name == NULL) {
-            fprintf(stderr, "herescript: #| with no command requires '=> NAME'\n");
-            free(cmd_tokens.items);
-            return EXIT_INVALID_HEADER;
+// Free every string in arr and the items array itself; resets the array to
+// an empty, unusable state. Convenience cleanup for short-lived StringArrays.
+static void string_array_free_all(StringArray *arr) {
+    for (size_t i = 0; i < arr->count; i++) free(arr->items[i]);
+    free(arr->items);
+    arr->items = NULL;
+    arr->count = 0;
+    arr->capacity = 0;
+}
+
+// Run a subcommand for a #|/#$ line.
+//   argv:        NULL-terminated argv (argv[0] is the executable).
+//   name:        when non-NULL, capture stdout, strip trailing newlines, and
+//                bind via setenv(name, ...). When NULL, stdout is inherited.
+//   stdin_data:  when NULL, the child's stdin is /dev/null. When non-NULL, a
+//                pipe is created and stdin_data is written to it followed by
+//                a newline (no writes when stdin_data is the empty string).
+//   kind:        directive label ("#|" / "#$") used in error messages.
+// Returns 0 on success or an appropriate exit code on failure. argv and name
+// remain owned by the caller across the call.
+static int run_subcommand(char **argv, const char *name,
+                          const char *stdin_data, const char *kind) {
+    int stdin_fd = -1;
+    int stdin_pipe[2] = {-1, -1};
+    int stdout_pipe[2] = {-1, -1};
+
+    if (stdin_data != NULL) {
+        if (pipe(stdin_pipe) != 0) {
+            perror("herescript: pipe");
+            return EXIT_GENERAL_ERROR;
         }
-        // No command: bind the #> block content directly to NAME unchanged.
-        if (!rs->dry_run) {
-            const char *value = (input_content != NULL) ? input_content : "";
-            if (setenv(name, value, 1) != 0) {
-                perror("herescript: setenv");
-                free(name);
-                free(cmd_tokens.items);
-                return EXIT_GENERAL_ERROR;
-            }
+        stdin_fd = stdin_pipe[0];
+    } else {
+        stdin_fd = open("/dev/null", O_RDONLY);
+        if (stdin_fd < 0) {
+            perror("herescript: open /dev/null");
+            return EXIT_GENERAL_ERROR;
         }
-        free(name);
-        free(cmd_tokens.items);
-        return 0;
     }
 
-    if (rs->dry_run) {
-        free(name);
-        for (size_t i = 0; i < cmd_tokens.count; i++) free(cmd_tokens.items[i]);
-        free(cmd_tokens.items);
-        return 0;
-    }
-
-    // Build NULL-terminated argv for the child.
-    append_string_array(&cmd_tokens, NULL);
-    char **cmd_argv = cmd_tokens.items;
-    size_t cmd_count = cmd_tokens.count - 1; // excluding NULL sentinel
-
-    // Always create a stdin pipe to feed the #> block content.
-    // Only create a stdout pipe when a NAME was given; otherwise inherit stdout.
-    int stdin_pipe[2], stdout_pipe[2];
-    stdout_pipe[0] = -1; stdout_pipe[1] = -1;
-    if (pipe(stdin_pipe) != 0) {
-        perror("herescript: pipe");
-        free(name);
-        free(cmd_argv);
-        return EXIT_GENERAL_ERROR;
-    }
     if (name != NULL && pipe(stdout_pipe) != 0) {
         perror("herescript: pipe");
-        close(stdin_pipe[0]); close(stdin_pipe[1]);
-        free(name);
-        free(cmd_argv);
+        if (stdin_pipe[1] >= 0) close(stdin_pipe[1]);
+        close(stdin_fd);
         return EXIT_GENERAL_ERROR;
     }
 
     pid_t pid = fork();
     if (pid < 0) {
         perror("herescript: fork");
-        close(stdin_pipe[0]); close(stdin_pipe[1]);
+        if (stdin_pipe[1] >= 0) close(stdin_pipe[1]);
+        close(stdin_fd);
         if (name != NULL) { close(stdout_pipe[0]); close(stdout_pipe[1]); }
-        free(name);
-        free(cmd_argv);
         return EXIT_GENERAL_ERROR;
     }
 
     if (pid == 0) {
-        // Child: wire up stdin pipe; wire stdout pipe only when capturing.
-        close(stdin_pipe[1]);
-        if (dup2(stdin_pipe[0], STDIN_FILENO) < 0) {
+        // Child.
+        if (stdin_pipe[1] >= 0) close(stdin_pipe[1]);
+        if (dup2(stdin_fd, STDIN_FILENO) < 0) {
             perror("herescript: dup2");
             exit(EXIT_GENERAL_ERROR);
         }
-        close(stdin_pipe[0]);
+        close(stdin_fd);
         if (name != NULL) {
             close(stdout_pipe[0]);
             if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0) {
@@ -946,32 +938,34 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
             }
             close(stdout_pipe[1]);
         }
-        if (strchr(cmd_argv[0], '/')) {
-            execve(cmd_argv[0], cmd_argv, environ);
+        if (strchr(argv[0], '/')) {
+            execve(argv[0], argv, environ);
         } else {
-            execvp(cmd_argv[0], cmd_argv);
+            execvp(argv[0], argv);
         }
-        perror("herescript: #| exec");
+        fprintf(stderr, "herescript: %s exec: ", kind);
+        perror(argv[0]);
         exit(EXIT_EXEC_FAILURE);
     }
 
-    // Parent: close unused pipe ends.
-    close(stdin_pipe[0]);
+    // Parent.
+    close(stdin_fd);
     if (name != NULL) close(stdout_pipe[1]);
 
-    // Write block content to child's stdin (add trailing newline).
-    // Ignore partial-write errors: if the child dies early we'll catch it via waitpid.
-    if (input_content && *input_content) {
-        size_t in_len = strlen(input_content);
-        ssize_t nw = write(stdin_pipe[1], input_content, in_len);
-        if (nw > 0) {
-            nw = write(stdin_pipe[1], "\n", 1);
+    // Write stdin_data to child if applicable. Ignore partial-write errors:
+    // if the child dies early we'll catch it via waitpid.
+    if (stdin_data != NULL) {
+        if (*stdin_data) {
+            size_t in_len = strlen(stdin_data);
+            ssize_t nw = write(stdin_pipe[1], stdin_data, in_len);
+            if (nw > 0) {
+                nw = write(stdin_pipe[1], "\n", 1);
+            }
+            (void)nw;
         }
-        (void)nw;
+        close(stdin_pipe[1]);
     }
-    close(stdin_pipe[1]);
 
-    // Collect child stdout when capturing; otherwise nothing to read.
     MaybeToken out_buf;
     maybe_token_init(&out_buf, name != NULL ? 1024 : 1);
     if (name != NULL) {
@@ -985,25 +979,18 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
         close(stdout_pipe[0]);
     }
 
-    // Wait for child.
     int status;
     waitpid(pid, &status, 0);
 
-    int exit_rc = 0;
     if (WIFSIGNALED(status)) {
-        fprintf(stderr, "herescript: #| subcommand killed by signal %d\n", WTERMSIG(status));
-        exit_rc = EXIT_SUBCOMMAND_FAILURE;
-    } else if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-        fprintf(stderr, "herescript: #| subcommand failed with exit code %d\n", WEXITSTATUS(status));
-        exit_rc = EXIT_SUBCOMMAND_FAILURE;
-    }
-
-    if (exit_rc != 0) {
+        fprintf(stderr, "herescript: %s subcommand killed by signal %d\n", kind, WTERMSIG(status));
         maybe_token_free(&out_buf);
-        free(name);
-        for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
-        free(cmd_argv);
-        return exit_rc;
+        return EXIT_SUBCOMMAND_FAILURE;
+    }
+    if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+        fprintf(stderr, "herescript: %s subcommand failed with exit code %d\n", kind, WEXITSTATUS(status));
+        maybe_token_free(&out_buf);
+        return EXIT_SUBCOMMAND_FAILURE;
     }
 
     if (name != NULL) {
@@ -1013,66 +1000,71 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
         }
         maybe_token_is_token(&out_buf);
         char *output = maybe_token_take(&out_buf);
-        if (setenv(name, output, 1) != 0) {
+        int rc = setenv(name, output, 1);
+        free(output);
+        maybe_token_free(&out_buf);
+        if (rc != 0) {
             perror("herescript: setenv");
-            free(output);
-            free(name);
-            maybe_token_free(&out_buf);
-            for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
-            free(cmd_argv);
             return EXIT_GENERAL_ERROR;
         }
-        free(output);
-        free(name);
+        return 0;
     }
     maybe_token_free(&out_buf);
-    for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
-    free(cmd_argv);
     return 0;
 }
 
-// Execute a subcommand for a #$ line. Unlike #|, no preceding #> block is
-// needed; stdin for the child is /dev/null. The command is mandatory. The
-// optional trailing "=> NAME" suffix controls output capture: when given,
-// stdout is captured, trailing newlines stripped, and the result bound via
-// setenv(); when omitted stdout is inherited. Returns 0 on success or an
-// appropriate exit code on failure.
-static int run_state_process_dollar_line(RunState *rs, const char *line) {
-    // Temporarily redirect rs->arguments for tokenization (same trick as #|).
-    StringArray saved_args = rs->arguments;
+// Execute a subcommand for a #| line. input_content is the content of the
+// preceding #> block (already bound to HERESCRIPT<N>). When the command is
+// omitted, the block content is bound directly to NAME.
+static int run_state_process_pipe_line(RunState *rs, const char *line, const char *input_content) {
     StringArray cmd_tokens;
-    init_string_array(&cmd_tokens, 8);
-    rs->arguments = cmd_tokens;
+    char *name;
+    parse_subcommand_tokens(rs, line, &cmd_tokens, &name);
 
-    const char *suffix = line + 2;
-    size_t suffix_len = strlen(suffix);
-    char *fake_line = malloc(suffix_len + 3);
-    if (!fake_line) { perror("malloc"); exit(EXIT_GENERAL_ERROR); }
-    fake_line[0] = '#'; fake_line[1] = ':';
-    memcpy(fake_line + 2, suffix, suffix_len + 1);
-    run_state_process_colon_line(rs, fake_line);
-    free(fake_line);
-
-    cmd_tokens = rs->arguments;
-    rs->arguments = saved_args;
-
-    size_t n = cmd_tokens.count;
-
-    // Optionally extract trailing "=> NAME" or "=>NAME".
-    char *name = NULL;
-    if (n >= 2 && strcmp(cmd_tokens.items[n-2], "=>") == 0
-               && is_identifier(cmd_tokens.items[n-1], strlen(cmd_tokens.items[n-1]))) {
-        name = cmd_tokens.items[n-1];
-        free(cmd_tokens.items[n-2]);
-        cmd_tokens.count -= 2;
-    } else if (n >= 1 && strncmp(cmd_tokens.items[n-1], "=>", 2) == 0
-               && is_identifier(cmd_tokens.items[n-1]+2, strlen(cmd_tokens.items[n-1]+2))) {
-        name = strdup_safe(cmd_tokens.items[n-1] + 2);
-        free(cmd_tokens.items[n-1]);
-        cmd_tokens.count--;
+    // No command: either bind block to NAME directly, or error.
+    if (cmd_tokens.count == 0) {
+        if (name == NULL) {
+            fprintf(stderr, "herescript: #| with no command requires '=> NAME'\n");
+            free(cmd_tokens.items);
+            return EXIT_INVALID_HEADER;
+        }
+        int rc = 0;
+        if (!rs->dry_run) {
+            const char *value = (input_content != NULL) ? input_content : "";
+            if (setenv(name, value, 1) != 0) {
+                perror("herescript: setenv");
+                rc = EXIT_GENERAL_ERROR;
+            }
+        }
+        free(name);
+        free(cmd_tokens.items);
+        return rc;
     }
 
-    // Command is mandatory for #$.
+    if (rs->dry_run) {
+        free(name);
+        string_array_free_all(&cmd_tokens);
+        return 0;
+    }
+
+    // Build NULL-terminated argv and run. #| always pipes block content to
+    // stdin (empty string when the block is empty), never /dev/null.
+    append_string_array(&cmd_tokens, NULL);
+    int rc = run_subcommand(cmd_tokens.items, name,
+                            input_content != NULL ? input_content : "", "#|");
+    cmd_tokens.count--;  // drop the NULL sentinel before freeing the strings
+    free(name);
+    string_array_free_all(&cmd_tokens);
+    return rc;
+}
+
+// Execute a subcommand for a #$ line. Stdin is /dev/null and the command is
+// mandatory. The optional "=> NAME" suffix controls output capture.
+static int run_state_process_dollar_line(RunState *rs, const char *line) {
+    StringArray cmd_tokens;
+    char *name;
+    parse_subcommand_tokens(rs, line, &cmd_tokens, &name);
+
     if (cmd_tokens.count == 0) {
         fprintf(stderr, "herescript: #$ requires a command\n");
         free(name);
@@ -1082,113 +1074,16 @@ static int run_state_process_dollar_line(RunState *rs, const char *line) {
 
     if (rs->dry_run) {
         free(name);
-        for (size_t i = 0; i < cmd_tokens.count; i++) free(cmd_tokens.items[i]);
-        free(cmd_tokens.items);
+        string_array_free_all(&cmd_tokens);
         return 0;
     }
 
     append_string_array(&cmd_tokens, NULL);
-    char **cmd_argv = cmd_tokens.items;
-    size_t cmd_count = cmd_tokens.count - 1;
-
-    // Stdin from /dev/null; stdout pipe only when capturing.
-    int devnull = open("/dev/null", O_RDONLY);
-    if (devnull < 0) {
-        perror("herescript: open /dev/null");
-        free(name); free(cmd_argv);
-        return EXIT_GENERAL_ERROR;
-    }
-    int stdout_pipe[2];
-    stdout_pipe[0] = -1; stdout_pipe[1] = -1;
-    if (name != NULL && pipe(stdout_pipe) != 0) {
-        perror("herescript: pipe");
-        close(devnull); free(name); free(cmd_argv);
-        return EXIT_GENERAL_ERROR;
-    }
-
-    pid_t pid = fork();
-    if (pid < 0) {
-        perror("herescript: fork");
-        close(devnull);
-        if (name != NULL) { close(stdout_pipe[0]); close(stdout_pipe[1]); }
-        free(name); free(cmd_argv);
-        return EXIT_GENERAL_ERROR;
-    }
-
-    if (pid == 0) {
-        if (dup2(devnull, STDIN_FILENO) < 0) { perror("herescript: dup2"); exit(EXIT_GENERAL_ERROR); }
-        close(devnull);
-        if (name != NULL) {
-            close(stdout_pipe[0]);
-            if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0) { perror("herescript: dup2"); exit(EXIT_GENERAL_ERROR); }
-            close(stdout_pipe[1]);
-        }
-        if (strchr(cmd_argv[0], '/')) {
-            execve(cmd_argv[0], cmd_argv, environ);
-        } else {
-            execvp(cmd_argv[0], cmd_argv);
-        }
-        perror("herescript: #$ exec");
-        exit(EXIT_EXEC_FAILURE);
-    }
-
-    // Parent.
-    close(devnull);
-    if (name != NULL) close(stdout_pipe[1]);
-
-    MaybeToken out_buf;
-    maybe_token_init(&out_buf, name != NULL ? 1024 : 1);
-    if (name != NULL) {
-        char read_buf[4096];
-        ssize_t nr;
-        while ((nr = read(stdout_pipe[0], read_buf, sizeof(read_buf))) > 0) {
-            for (ssize_t i = 0; i < nr; i++) {
-                maybe_token_append(&out_buf, read_buf[i]);
-            }
-        }
-        close(stdout_pipe[0]);
-    }
-
-    int status;
-    waitpid(pid, &status, 0);
-
-    int exit_rc = 0;
-    if (WIFSIGNALED(status)) {
-        fprintf(stderr, "herescript: #$ subcommand killed by signal %d\n", WTERMSIG(status));
-        exit_rc = EXIT_SUBCOMMAND_FAILURE;
-    } else if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-        fprintf(stderr, "herescript: #$ subcommand failed with exit code %d\n", WEXITSTATUS(status));
-        exit_rc = EXIT_SUBCOMMAND_FAILURE;
-    }
-
-    if (exit_rc != 0) {
-        maybe_token_free(&out_buf);
-        free(name);
-        for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
-        free(cmd_argv);
-        return exit_rc;
-    }
-
-    if (name != NULL) {
-        while (out_buf.len > 0 && (out_buf.data[out_buf.len-1] == '\n' || out_buf.data[out_buf.len-1] == '\r')) {
-            out_buf.len--;
-        }
-        maybe_token_is_token(&out_buf);
-        char *output = maybe_token_take(&out_buf);
-        if (setenv(name, output, 1) != 0) {
-            perror("herescript: setenv");
-            free(output); free(name); maybe_token_free(&out_buf);
-            for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
-            free(cmd_argv);
-            return EXIT_GENERAL_ERROR;
-        }
-        free(output);
-        free(name);
-    }
-    maybe_token_free(&out_buf);
-    for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
-    free(cmd_argv);
-    return 0;
+    int rc = run_subcommand(cmd_tokens.items, name, NULL, "#$");
+    cmd_tokens.count--;  // drop the NULL sentinel before freeing the strings
+    free(name);
+    string_array_free_all(&cmd_tokens);
+    return rc;
 }
 
 // Extract the argument for a long option that accepts either "--opt VALUE" or

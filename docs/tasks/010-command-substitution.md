@@ -119,6 +119,13 @@ but stops with an appropriate message.
 Comment: Step 4 says "the PATH ARGS.. part cannot be omitted" — good, but be explicit that #$ with no command is a parse error.
 - Agreed. Omitting the command is a parse error.
 
+## Step 5: Refactor sub-command functions
+
+The functions run_state_process_pipe_line and run_state_process_dollar_line have
+a good deal of common code. Both the initial and final parts are almost identical
+and it suggests we can extract a common helper function for the start and ends
+of the two functions.
+
 
 ## Final Step: Definition of Done
 
