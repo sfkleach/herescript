@@ -819,11 +819,12 @@ static int run_state_path_prepend(RunState const *rs, const char *dir) {
 }
 
 // Execute a subcommand for a #| line. input_content is the content of the
-// preceding #> block (already bound to HERESCRIPT<N>). Tokenises cmd_line
-// like a #: line, strips the trailing "=> NAME" (required for Step 1), forks
-// a child with stdin fed from input_content, captures stdout, strips trailing
-// newlines, and binds the result to NAME via setenv(). Returns 0 on success or
-// an appropriate exit code on failure.
+// preceding #> block (already bound to HERESCRIPT<N>). Tokenises like a #:
+// line, optionally strips a trailing "=> NAME" suffix, forks a child with
+// stdin fed from input_content. When NAME is given, stdout is captured,
+// trailing newlines stripped, and the result bound via setenv(). When NAME is
+// omitted stdout is inherited (passes to the terminal). Returns 0 on success
+// or an appropriate exit code on failure.
 static int run_state_process_pipe_line(RunState *rs, const char *line, const char *input_content) {
     // Temporarily redirect rs->arguments so the colon-line tokenizer writes to
     // a local array instead of accumulating into the real argument list.
@@ -849,7 +850,8 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
 
     size_t n = cmd_tokens.count;
 
-    // Extract trailing "=> NAME" or "=>NAME" from the token list.
+    // Optionally extract trailing "=> NAME" or "=>NAME" from the token list.
+    // When absent, name stays NULL and stdout is inherited rather than captured.
     char *name = NULL;
     if (n >= 2 && strcmp(cmd_tokens.items[n-2], "=>") == 0
                && is_identifier(cmd_tokens.items[n-1], strlen(cmd_tokens.items[n-1]))) {
@@ -863,15 +865,15 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
         name = strdup_safe(cmd_tokens.items[n-1] + 2);
         free(cmd_tokens.items[n-1]);
         cmd_tokens.count--;
-    } else {
-        fprintf(stderr, "herescript: #| requires a '=> NAME' target\n");
-        for (size_t i = 0; i < cmd_tokens.count; i++) free(cmd_tokens.items[i]);
-        free(cmd_tokens.items);
-        return EXIT_INVALID_HEADER;
     }
+    // No else-error: missing => NAME is valid (side-effect form, stdout inherited).
 
     if (cmd_tokens.count == 0) {
-        fprintf(stderr, "herescript: #| requires a command before '=> %s'\n", name);
+        if (name) {
+            fprintf(stderr, "herescript: #| requires a command before '=> %s'\n", name);
+        } else {
+            fprintf(stderr, "herescript: #| requires a command\n");
+        }
         free(name);
         free(cmd_tokens.items);
         return EXIT_INVALID_HEADER;
@@ -889,15 +891,17 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
     char **cmd_argv = cmd_tokens.items;
     size_t cmd_count = cmd_tokens.count - 1; // excluding NULL sentinel
 
-    // Create stdin and stdout pipes.
+    // Always create a stdin pipe to feed the #> block content.
+    // Only create a stdout pipe when a NAME was given; otherwise inherit stdout.
     int stdin_pipe[2], stdout_pipe[2];
+    stdout_pipe[0] = -1; stdout_pipe[1] = -1;
     if (pipe(stdin_pipe) != 0) {
         perror("herescript: pipe");
         free(name);
         free(cmd_argv);
         return EXIT_GENERAL_ERROR;
     }
-    if (pipe(stdout_pipe) != 0) {
+    if (name != NULL && pipe(stdout_pipe) != 0) {
         perror("herescript: pipe");
         close(stdin_pipe[0]); close(stdin_pipe[1]);
         free(name);
@@ -909,22 +913,28 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
     if (pid < 0) {
         perror("herescript: fork");
         close(stdin_pipe[0]); close(stdin_pipe[1]);
-        close(stdout_pipe[0]); close(stdout_pipe[1]);
+        if (name != NULL) { close(stdout_pipe[0]); close(stdout_pipe[1]); }
         free(name);
         free(cmd_argv);
         return EXIT_GENERAL_ERROR;
     }
 
     if (pid == 0) {
-        // Child: wire up pipes and exec.
+        // Child: wire up stdin pipe; wire stdout pipe only when capturing.
         close(stdin_pipe[1]);
-        close(stdout_pipe[0]);
-        if (dup2(stdin_pipe[0], STDIN_FILENO) < 0 || dup2(stdout_pipe[1], STDOUT_FILENO) < 0) {
+        if (dup2(stdin_pipe[0], STDIN_FILENO) < 0) {
             perror("herescript: dup2");
             exit(EXIT_GENERAL_ERROR);
         }
         close(stdin_pipe[0]);
-        close(stdout_pipe[1]);
+        if (name != NULL) {
+            close(stdout_pipe[0]);
+            if (dup2(stdout_pipe[1], STDOUT_FILENO) < 0) {
+                perror("herescript: dup2");
+                exit(EXIT_GENERAL_ERROR);
+            }
+            close(stdout_pipe[1]);
+        }
         if (strchr(cmd_argv[0], '/')) {
             execve(cmd_argv[0], cmd_argv, environ);
         } else {
@@ -934,9 +944,9 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
         exit(EXIT_EXEC_FAILURE);
     }
 
-    // Parent: write input, read output.
+    // Parent: close unused pipe ends.
     close(stdin_pipe[0]);
-    close(stdout_pipe[1]);
+    if (name != NULL) close(stdout_pipe[1]);
 
     // Write block content to child's stdin (add trailing newline).
     // Ignore partial-write errors: if the child dies early we'll catch it via waitpid.
@@ -950,17 +960,19 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
     }
     close(stdin_pipe[1]);
 
-    // Collect child stdout.
+    // Collect child stdout when capturing; otherwise nothing to read.
     MaybeToken out_buf;
-    maybe_token_init(&out_buf, 1024);
-    char read_buf[4096];
-    ssize_t nr;
-    while ((nr = read(stdout_pipe[0], read_buf, sizeof(read_buf))) > 0) {
-        for (ssize_t i = 0; i < nr; i++) {
-            maybe_token_append(&out_buf, read_buf[i]);
+    maybe_token_init(&out_buf, name != NULL ? 1024 : 1);
+    if (name != NULL) {
+        char read_buf[4096];
+        ssize_t nr;
+        while ((nr = read(stdout_pipe[0], read_buf, sizeof(read_buf))) > 0) {
+            for (ssize_t i = 0; i < nr; i++) {
+                maybe_token_append(&out_buf, read_buf[i]);
+            }
         }
+        close(stdout_pipe[0]);
     }
-    close(stdout_pipe[0]);
 
     // Wait for child.
     int status;
@@ -983,25 +995,26 @@ static int run_state_process_pipe_line(RunState *rs, const char *line, const cha
         return exit_rc;
     }
 
-    // Strip trailing CR/LF (match shell $(...) behaviour).
-    while (out_buf.len > 0 && (out_buf.data[out_buf.len-1] == '\n' || out_buf.data[out_buf.len-1] == '\r')) {
-        out_buf.len--;
-    }
-
-    // Bind output to NAME.
-    maybe_token_is_token(&out_buf);
-    char *output = maybe_token_take(&out_buf);
-    maybe_token_free(&out_buf);
-    if (setenv(name, output, 1) != 0) {
-        perror("herescript: setenv");
+    if (name != NULL) {
+        // Strip trailing CR/LF (match shell $(...) behaviour).
+        while (out_buf.len > 0 && (out_buf.data[out_buf.len-1] == '\n' || out_buf.data[out_buf.len-1] == '\r')) {
+            out_buf.len--;
+        }
+        maybe_token_is_token(&out_buf);
+        char *output = maybe_token_take(&out_buf);
+        if (setenv(name, output, 1) != 0) {
+            perror("herescript: setenv");
+            free(output);
+            free(name);
+            maybe_token_free(&out_buf);
+            for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
+            free(cmd_argv);
+            return EXIT_GENERAL_ERROR;
+        }
         free(output);
         free(name);
-        for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
-        free(cmd_argv);
-        return EXIT_GENERAL_ERROR;
     }
-    free(output);
-    free(name);
+    maybe_token_free(&out_buf);
     for (size_t i = 0; i < cmd_count; i++) free(cmd_argv[i]);
     free(cmd_argv);
     return 0;

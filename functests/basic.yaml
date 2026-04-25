@@ -1507,3 +1507,29 @@ tests:
       #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
       #! --load-file ${FIXTURE_DIR}/${PIPE_LOAD}
     exit_code: 4
+
+  - name: pipe-line-no-name-side-effect
+    description: "#| without => NAME runs for side-effect; no NAME binding is created"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #> hello
+      #| true
+    output: |
+      {
+          "env": [
+              "HERESCRIPT0=hello",
+              "HERESCRIPT_COMMAND=${BUILD_DIR}/test-herescript",
+              "HERESCRIPT_FILE=${BUILD_DIR}/pipe-line-no-name-side-effect.sh"
+          ],
+          "argv": [
+              "${BUILD_DIR}/test-herescript"
+          ]
+      }
+
+  - name: pipe-line-no-name-failure
+    description: "#| without => NAME still propagates non-zero exit as EXIT_SUBCOMMAND_FAILURE"
+    script: |
+      #!${BUILD_DIR}/herescript ${BUILD_DIR}/test-herescript
+      #> hello
+      #| false
+    exit_code: 6
