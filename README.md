@@ -96,7 +96,8 @@ or separator prevents binding recognition.
 
 A run of consecutive `#>` lines is collected into a single multi-line string
 (line breaks preserved) and bound to `${HERESCRIPT0}`, `${HERESCRIPT1}`, etc.
-A `#:` line between two `#>` runs forces a break, starting a new argument.
+Any non-`#>` header line (`#:`, `##`, `#!`) between two `#>` runs forces a
+break, starting a new argument.
 
 ```
 #!/usr/local/bin/herescript python3
